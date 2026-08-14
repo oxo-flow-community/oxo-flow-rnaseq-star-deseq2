@@ -1,0 +1,6 @@
+name: pandas
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - pandas =2.3.2

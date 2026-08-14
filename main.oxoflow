@@ -1,0 +1,427 @@
+# oxo-flow port of snakemake-workflows/rna-seq-star-deseq2 v3.1.1
+# (default-parameters main execution path).
+#
+# Upstream: https://github.com/snakemake-workflows/rna-seq-star-deseq2 @ v3.1.1
+#   (sha aa6b17edf3396230165c18709d04cd982bdaaa4c)
+# Default path (rule all): get_genome -> get_annotation -> star_index ->
+#   fastp_pe (trimming) -> star_align (STAR + --quantMode GeneCounts) ->
+#   RSeQC QC + multiqc -> count_matrix -> gene_2_symbol -> deseq2_init ->
+#   pca + deseq2 (per contrast).
+#
+# Fidelity notes:
+# - Commands mirror the upstream rules and their snakemake wrappers (v7.2.0)
+#   flag-for-flag: fastp (v7.2.0/bio/fastp), STAR align/index
+#   (v7.2.0/bio/star/*), multiqc (v7.2.0/bio/multiqc), Ensembl reference
+#   downloads (v7.2.0/bio/reference/ensembl-*).
+# - Upstream wildcards are (sample, unit); the port fans out over one
+#   composite "unit key" <sample>-<unit> (e.g. A-lane1) as its {sample}
+#   wildcard, so output paths stay byte-identical (results/trimmed/A-lane1/
+#   A-lane1_R1.fastq.gz etc.).
+# - Upstream Python/R scripts that read the snakemake object were ported to
+#   CLI arguments with identical logic (scripts/). Config lookups (base
+#   levels, batch effects, contrasts, design model) become [config] keys
+#   passed as arguments.
+# - Upstream per-unit fastp_adapters/fastp_extra columns are pipeline-level
+#   [config] keys here (defaults equal the upstream defaults).
+# - Nested upstream config (diffexp.*, ref.*, trimming.activate, pca.*) is
+#   flattened to flat [config] keys; see README fidelity table.
+# - get_genome follows the upstream ensembl-sequence wrapper: probe the
+#   primary assembly URL, fall back to toplevel. Only the HTTPS protocol
+#   branch is ported (upstream also tries FTP).
+#
+# Not ported (see README fidelity table): get_sra (SRA branch), fastp_se
+# (single-end branch), bwa_index and genome_faidx (no consumer in the
+# default path), the trimming-off rewiring (align from raw reads), the
+# Snakemake report (.rst files), per-unit adapter lookup.
+
+[workflow]
+name = "oxo-flow-rnaseq-star-deseq2"
+version = "1.0.0"
+description = "RNA-seq differential expression with STAR and DESeq2: Ensembl reference download, fastp trimming, STAR alignment with gene counts, RSeQC QC + MultiQC, count matrix, gene symbol annotation, DESeq2 (PCA + contrasts) — oxo-flow port of snakemake-workflows/rna-seq-star-deseq2 v3.1.1"
+author = "oxo-flow-community"
+
+[config]
+# Sample sheet (TSV: sample_name, condition, ...) and unit sheet
+# (TSV: sample_name, unit_name, fq1, fq2, sra, fastp_adapters, fastp_extra,
+# strandedness). Upstream: config["samples"] / config["units"].
+samples_file = "config/samples.tsv"
+units_file = "config/units.tsv"
+# Directory holding <unit-key>_R1.fastq.gz / _R2.fastq.gz per config/units.tsv.
+# The repo default ships the tiny test fixtures; point this at your data
+# (e.g. "raw").
+raw_dir = "test/fixtures/raw"
+# Reference (upstream: ref.species / ref.release / ref.build). The download
+# URLs below are the Ensembl URLs the wrappers resolve for these values.
+ref_species = "homo_sapiens"
+ref_release = "115"
+ref_build = "GRCh38"
+genome_url = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
+genome_url_toplevel = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.toplevel.fa.gz"
+annotation_url = "ftp://ftp.ensembl.org/pub/release-115/gtf/homo_sapiens/Homo_sapiens.GRCh38.115.gtf.gz"
+# Trimming (upstream: trimming.activate). The fastp rule runs only when
+# activated; deactivating breaks star_align in this port (upstream rewires
+# star_align to the raw reads — not ported).
+trimming_activate = true
+# fastp adapter args and extra args (upstream: per-unit columns
+# fastp_adapters / fastp_extra; the port uses the upstream defaults).
+fastp_adapters = "--detect_adapter_for_pe"
+fastp_extra = "--trim_poly_x --poly_x_min_len 7 --trim_poly_g --poly_g_min_len 7"
+# PCA (upstream: pca.activate / pca.labels). pca_variables is the derived
+# upstream list (variables_of_interest + batch_effects + labels), kept
+# explicit here — keep it in sync with the diffexp keys below.
+pca_activate = true
+pca_labels = ""
+pca_variables = "treatment_1,treatment_2,jointly_handled"
+# Differential expression (upstream: diffexp.*). Comma-joined lists mirror
+# the upstream nested tables; positions pair up (treatment_1 -> untreated,
+# treatment_2 -> untreated).
+diffexp_variables = "treatment_1,treatment_2"
+diffexp_base_levels = "untreated,untreated"
+diffexp_batch_effects = "jointly_handled"
+diffexp_model = ""
+# Contrasts (upstream: diffexp.contrasts). One comma-joined entry per
+# contrast: contrast id, its variable_of_interest, its level_of_interest.
+# The base level comes from diffexp_base_levels.
+contrasts = "treatment_1"
+contrast_variables = "treatment_1"
+contrast_levels = "treated"
+# STAR extra params (upstream: params.star.index / params.star.align).
+star_index_extra = ""
+star_align_extra = ""
+# biomaRt species dataset suffix (upstream get_bioc_species_name()).
+biomart_species = "hsapiens"
+
+[defaults]
+threads = 1
+
+# Sample source: one entry per (sample, unit) sequencing unit. The {sample}
+# wildcard carries the composite unit key <sample>-<unit> so that every
+# output path matches the upstream {sample}-{unit} naming byte-for-byte.
+# Upstream demo data (config/samples.tsv + config/units.tsv) ships with the
+# repo; raw reads live at raw/<unit_key>_R1.fastq.gz / _R2.fastq.gz.
+[[sample_groups]]
+name = "units"
+samples = ["A-lane1", "A-lane2", "B-lane1", "C-lane1", "D-lane1", "E-lane1"]
+
+# ---------------------------------------------------------------------------
+# Reference download & index
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "get_genome"
+description = "Download the Ensembl reference genome FASTA (upstream get_genome, ensembl-sequence wrapper: primary assembly with toplevel fallback)"
+output = ["resources/genome.fasta"]
+shell = """
+mkdir -p logs
+(if curl -fL --head {config.genome_url} >/dev/null 2>&1; then
+    curl -L {config.genome_url} | gzip -d >> resources/genome.fasta
+else
+    curl -L {config.genome_url_toplevel} | gzip -d >> resources/genome.fasta
+fi) >> logs/get-genome.log 2>&1
+"""
+
+[[rules]]
+name = "get_annotation"
+description = "Download the Ensembl reference gene annotation GTF (upstream get_annotation, ensembl-annotation wrapper)"
+output = ["resources/genome.gtf"]
+shell = """
+mkdir -p logs
+(curl -L {config.annotation_url} | gzip -d > resources/genome.gtf) >> logs/get_annotation.log 2>&1
+"""
+
+[[rules]]
+name = "star_index"
+description = "Build the STAR genome index (upstream star_index, star/index wrapper)"
+input = ["resources/genome.fasta", "resources/genome.gtf"]
+output = ["resources/star_genome"]
+shell = """
+mkdir -p logs .oxo-flow/tmp/star_index
+STAR --runThreadN {threads} --runMode genomeGenerate --genomeFastaFiles {input[0]} --sjdbGTFfile {input[1]} {config.star_index_extra} --outTmpDir .oxo-flow/tmp/star_index/STARtmp --genomeDir {output[0]} >> logs/star_index_genome.log 2>&1
+"""
+[rules.resources]
+threads = 4
+[rules.environment]
+conda = "envs/star.yaml"
+
+# ---------------------------------------------------------------------------
+# Trimming (fastp)
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "fastp_pe"
+description = "Trim adapters and poly-X tails with fastp, paired-end (upstream fastp_pe, fastp wrapper)"
+when = "config.trimming_activate"
+input = ["{config.raw_dir}/{sample}_R1.fastq.gz", "{config.raw_dir}/{sample}_R2.fastq.gz"]
+output = [
+    "results/trimmed/{sample}/{sample}_R1.fastq.gz",
+    "results/trimmed/{sample}/{sample}_R2.fastq.gz",
+    "results/trimmed/{sample}/{sample}.unpaired.R1.fastq.gz",
+    "results/trimmed/{sample}/{sample}.unpaired.R2.fastq.gz",
+    "results/trimmed/{sample}/{sample}_paired.failed.fastq.gz",
+    "results/trimmed/{sample}/{sample}.html",
+    "results/trimmed/{sample}/{sample}.json",
+]
+shell = """
+mkdir -p logs/trimmed
+(fastp --thread {threads} {config.fastp_extra} {config.fastp_adapters} --in1 {input[0]} --in2 {input[1]} --out1 {output[0]} --out2 {output[1]} --unpaired1 {output[2]} --unpaired2 {output[3]} --failed_out {output[4]} --json {output[6]} --html {output[5]}) >> logs/trimmed/{sample}.log 2>&1
+"""
+[rules.resources]
+threads = 8
+[rules.environment]
+conda = "envs/fastp.yaml"
+
+# ---------------------------------------------------------------------------
+# Alignment (STAR)
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "star_align"
+description = "Align reads with STAR, output sorted BAM plus gene counts (upstream star_align, star/align wrapper)"
+input = [
+    "resources/star_genome",
+    "resources/genome.gtf",
+    "results/trimmed/{sample}/{sample}_R1.fastq.gz",
+    "results/trimmed/{sample}/{sample}_R2.fastq.gz",
+]
+output = [
+    "results/star/{sample}/Aligned.sortedByCoord.out.bam",
+    "results/star/{sample}/ReadsPerGene.out.tab",
+    "results/star/{sample}/Log.out",
+    "results/star/{sample}/SJ.out.tab",
+    "results/star/{sample}/Log.final.out",
+]
+shell = """
+mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
+STAR --runThreadN {threads} --genomeDir {input[0]} --readFilesIn {input[2]} {input[3]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --outStd BAM_SortedByCoordinate > {output[0]} >> logs/star/{sample}.log 2>&1
+cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
+cat .oxo-flow/tmp/star_align_{sample}/SJ.out.tab > {output[3]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.out > {output[2]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.final.out > {output[4]}
+"""
+[rules.resources]
+threads = 24
+[rules.environment]
+conda = "envs/star.yaml"
+
+# ---------------------------------------------------------------------------
+# Quality control (RSeQC + MultiQC)
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "rseqc_gtf2bed"
+description = "Convert the reference GTF to a BED12 transcript annotation (upstream rseqc_gtf2bed, gtf2bed.py)"
+input = ["resources/genome.gtf"]
+output = ["results/qc/rseqc/annotation.bed", "results/qc/rseqc/annotation.db"]
+temp_output = ["results/qc/rseqc/annotation.db"]
+script = "scripts/gtf2bed.py {input[0]} {output[0]} {output[1]}"
+[rules.environment]
+conda = "envs/gffutils.yaml"
+
+[[rules]]
+name = "rseqc_junction_annotation"
+description = "Annotate splice junctions with RSeQC (upstream rseqc_junction_annotation)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseqc/annotation.bed"]
+output = ["results/qc/rseqc/{sample}.junctionanno.junction.bed", "logs/rseqc/rseqc_junction_annotation/{sample}.log"]
+shell = """
+mkdir -p logs/rseqc/rseqc_junction_annotation
+junction_annotation.py -q 255 -i {input[0]} -r {input[1]} -o results/qc/rseqc/{sample}.junctionanno > logs/rseqc/rseqc_junction_annotation/{sample}.log 2>&1
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "rseqc_junction_saturation"
+description = "Splice junction saturation analysis with RSeQC (upstream rseqc_junction_saturation)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseqc/annotation.bed"]
+output = ["results/qc/rseqc/{sample}.junctionsat.junctionSaturation_plot.pdf"]
+shell = """
+mkdir -p logs/rseqc/rseqc_junction_saturation
+junction_saturation.py -q 255 -i {input[0]} -r {input[1]} -o results/qc/rseqc/{sample}.junctionsat > logs/rseqc/rseqc_junction_saturation/{sample}.log 2>&1
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "rseqc_stat"
+description = "BAM alignment statistics with RSeQC (upstream rseqc_stat)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam"]
+output = ["results/qc/rseqc/{sample}.stats.txt"]
+shell = """
+mkdir -p logs/rseqc/rseqc_stat
+bam_stat.py -i {input[0]} > {output[0]} 2> logs/rseqc/rseqc_stat/{sample}.log
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "rseqc_infer"
+description = "Infer library strandedness with RSeQC (upstream rseqc_infer)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseqc/annotation.bed"]
+output = ["results/qc/rseqc/{sample}.infer_experiment.txt"]
+shell = """
+mkdir -p logs/rseqc/rseqc_infer
+infer_experiment.py -r {input[1]} -i {input[0]} > {output[0]} 2> logs/rseqc/rseqc_infer/{sample}.log
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "rseqc_innerdis"
+description = "Inner distance distribution with RSeQC (upstream rseqc_innerdis)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseqc/annotation.bed"]
+output = ["results/qc/rseqc/{sample}.inner_distance_freq.inner_distance.txt"]
+shell = """
+mkdir -p logs/rseqc/rseqc_innerdis
+inner_distance.py -r {input[1]} -i {input[0]} -o results/qc/rseqc/{sample} > logs/rseqc/rseqc_innerdis/{sample}.log 2>&1
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "rseqc_readdis"
+description = "Read distribution over genome features with RSeQC (upstream rseqc_readdis)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseqc/annotation.bed"]
+output = ["results/qc/rseqc/{sample}.readdistribution.txt"]
+shell = """
+mkdir -p logs/rseqc/rseqc_readdis
+read_distribution.py -r {input[1]} -i {input[0]} > {output[0]} 2> logs/rseqc/rseqc_readdis/{sample}.log
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "rseqc_readdup"
+description = "Read duplication rate with RSeQC (upstream rseqc_readdup)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam"]
+output = ["results/qc/rseqc/{sample}.readdup.DupRate_plot.pdf"]
+shell = """
+mkdir -p logs/rseqc/rseqc_readdup
+read_duplication.py -i {input[0]} -o results/qc/rseqc/{sample}.readdup > logs/rseqc/rseqc_readdup/{sample}.log 2>&1
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "rseqc_readgc"
+description = "Read GC content distribution with RSeQC (upstream rseqc_readgc)"
+priority = 1
+input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam"]
+output = ["results/qc/rseqc/{sample}.readgc.GC_plot.pdf"]
+shell = """
+mkdir -p logs/rseqc/rseqc_readgc
+read_GC.py -i {input[0]} -o results/qc/rseqc/{sample}.readgc > logs/rseqc/rseqc_readgc/{sample}.log 2>&1
+"""
+[rules.environment]
+conda = "envs/rseqc.yaml"
+
+[[rules]]
+name = "multiqc"
+description = "Aggregate alignment and QC reports with MultiQC (upstream multiqc, multiqc wrapper: scans the parent directories of all inputs)"
+expand_inputs = [
+    { pattern = "results/star/{sample}/Aligned.sortedByCoord.out.bam", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.junctionanno.junction.bed", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.junctionsat.junctionSaturation_plot.pdf", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.stats.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.inner_distance_freq.inner_distance.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.readdistribution.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.readdup.DupRate_plot.pdf", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.readgc.GC_plot.pdf", variables = { sample = "config.samples_list" } },
+    { pattern = "logs/rseqc/rseqc_junction_annotation/{sample}.log", variables = { sample = "config.samples_list" } },
+]
+output = ["results/qc/multiqc_report.html"]
+shell = """
+mkdir -p logs
+dirs=$(for f in {input}; do dirname "$f"; done | sort -u)
+multiqc --no-data-dir --outdir results/qc --filename multiqc_report $dirs >> logs/multiqc.log 2>&1
+"""
+[rules.environment]
+conda = "envs/multiqc.yaml"
+
+# ---------------------------------------------------------------------------
+# Count matrix + gene symbol annotation
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "count_matrix"
+description = "Build the gene count matrix from STAR ReadsPerGene.out.tab, collapsing technical replicates (upstream count_matrix, count-matrix.py)"
+expand_inputs = [
+    { pattern = "results/star/{sample}/ReadsPerGene.out.tab", variables = { sample = "config.samples_list" } },
+]
+output = ["results/counts/all.tsv"]
+script = "scripts/count-matrix.py {config.units_file} {output[0]} {input} logs/count-matrix.log"
+[rules.environment]
+conda = "envs/pandas.yaml"
+
+[[rules]]
+name = "gene_2_symbol_counts"
+description = "Annotate gene symbols via Ensembl biomaRt for the count matrix (upstream gene_2_symbol on results/counts/all.tsv)"
+input = ["results/counts/all.tsv"]
+output = ["results/counts/all.symbol.tsv"]
+script = "scripts/gene2symbol.R {input[0]} {output[0]} {config.biomart_species} logs/gene2symbol/all.log"
+[rules.environment]
+conda = "envs/biomart.yaml"
+
+[[rules]]
+name = "gene_2_symbol_normcounts"
+description = "Annotate gene symbols via Ensembl biomaRt for the DESeq2 normalized counts (upstream gene_2_symbol on results/deseq2/normcounts.tsv)"
+input = ["results/deseq2/normcounts.tsv"]
+output = ["results/deseq2/normcounts.symbol.tsv"]
+script = "scripts/gene2symbol.R {input[0]} {output[0]} {config.biomart_species} logs/gene2symbol/normcounts.log"
+[rules.environment]
+conda = "envs/biomart.yaml"
+
+[[rules]]
+name = "gene_2_symbol_diffexp"
+description = "Annotate gene symbols via Ensembl biomaRt for each DESeq2 contrast table (upstream gene_2_symbol on results/diffexp/{contrast}.diffexp.tsv)"
+scatter = { variable = "contrast", values_from = "config.contrasts" }
+input = ["results/diffexp/{contrast}.diffexp.tsv"]
+output = ["results/diffexp/{contrast}.diffexp.symbol.tsv"]
+script = "scripts/gene2symbol.R {input[0]} {output[0]} {config.biomart_species} logs/gene2symbol/{contrast}.diffexp.log"
+[rules.environment]
+conda = "envs/biomart.yaml"
+
+# ---------------------------------------------------------------------------
+# Differential expression (DESeq2)
+# ---------------------------------------------------------------------------
+
+[[rules]]
+name = "deseq2_init"
+description = "Build the DESeq2 dataset, run DESeq and write normalized counts (upstream deseq2_init, deseq2-init.R)"
+input = ["results/counts/all.tsv", "config/samples.tsv"]
+output = ["results/deseq2/all.rds", "results/deseq2/normcounts.tsv"]
+script = "scripts/deseq2-init.R {input[0]} {input[1]} {output[0]} {output[1]} {config.diffexp_model} {config.diffexp_variables} {config.diffexp_base_levels} {config.diffexp_batch_effects} {threads} logs/deseq2/init.log"
+[rules.resources]
+threads = 1
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+[[rules]]
+name = "deseq2"
+description = "DESeq2 results for one contrast with ashr shrinkage + MA plot (upstream deseq2, deseq2.R)"
+scatter = { variable = "contrast", values_from = "config.contrasts" }
+input = ["results/deseq2/all.rds"]
+output = ["results/diffexp/{contrast}.diffexp.tsv", "results/diffexp/{contrast}.ma-plot.svg"]
+script = "scripts/deseq2.R {input[0]} {output[0]} {output[1]} {config.diffexp_variables} {config.diffexp_base_levels} {config.contrast_variables} {config.contrast_levels} {threads} logs/deseq2/{contrast}.diffexp.log"
+[rules.resources]
+threads = 1
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+[[rules]]
+name = "pca"
+description = "PCA plot of rlog-transformed counts per variable of interest / batch effect (upstream pca, plot-pca.R)"
+when = "config.pca_activate"
+scatter = { variable = "variable", values_from = "config.pca_variables" }
+input = ["results/deseq2/all.rds"]
+output = ["results/pca.{variable}.svg"]
+script = "scripts/plot-pca.R {input[0]} {output[0]} {variable} logs/pca.{variable}.log"
+[rules.environment]
+conda = "envs/deseq2.yaml"
