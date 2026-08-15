@@ -1,8 +1,9 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
   "name": "oxo-flow-rnaseq-star-deseq2",
-  "title": "RNA-seq with STAR and DESeq2 (snakemake catalog flagship)",
-  "engine": "oxo-flow",
+  "title": "RNA-seq: STAR alignment, DESeq2 differential expression and QC",
+  "origin": "port",
+  "rating": "verified",
+  "engine": "snakemake",
   "source": {
     "repo": "snakemake-workflows/rna-seq-star-deseq2",
     "url": "https://github.com/snakemake-workflows/rna-seq-star-deseq2",
@@ -12,8 +13,7 @@
   },
   "created": "2026-08-15",
   "domain": "transcriptomics",
-  "tags": ["rna-seq", "differential-expression", "deseq2", "star", "fastp", "rseqc", "multiqc", "snakemake"],
-  "description": "oxo-flow port of the snakemake-workflows/rna-seq-star-deseq2 v3.1.1 default path: Ensembl reference download, STAR index, fastp trimming, STAR alignment with gene counts, RSeQC QC + MultiQC, count matrix with technical-replicate collapse, Ensembl biomaRt gene-symbol annotation, DESeq2 (normalized counts, PCA, per-contrast results with ashr shrinkage).",
+  "tags": ["rna-seq", "differential-expression", "deseq2", "star", "fastp", "rseqc", "multiqc"],
   "scope": [
     "get_genome",
     "get_annotation",
@@ -51,22 +51,32 @@
   ],
   "rule_count": 22,
   "tools": [
-    "STAR@2.7.11b",
-    "fastp@1.0.1",
-    "RSeQC@5.0.4",
-    "gffutils@0.13",
-    "pandas@2.3.2",
-    "multiqc@1.29",
-    "bioconductor-deseq2@1.46.0",
-    "r-stringr@1.5.1",
-    "r-ashr@2.2_63",
-    "bioconductor-biomart@2.62.0",
-    "r-tidyverse@2.0.0",
-    "r-dbplyr@2.5.0",
-    "curl@system (Ensembl reference download)"
+    "star",
+    "fastp",
+    "rseqc",
+    "gffutils",
+    "pandas",
+    "multiqc",
+    "bioconductor-deseq2",
+    "r-stringr",
+    "r-ashr",
+    "bioconductor-biomart",
+    "r-tidyverse",
+    "r-dbplyr",
+    "curl"
   ],
-  "status": "ready",
+  "description": "End-to-end RNA-seq differential-expression analysis with STAR and DESeq2: Ensembl reference download, fastp trimming, STAR alignment with gene counts, RSeQC QC + MultiQC, count matrix with technical-replicate collapse, Ensembl biomaRt gene-symbol annotation, and DESeq2 (normalized counts, PCA plots, per-contrast results with ashr shrinkage and MA plots). Every tool is pinned to an exact conda version for reproducibility.",
+  "installation": {
+    "engine": "oxo-flow >= 0.11.0",
+    "toolchain": "conda envs — pinned",
+    "requirements": [
+      "paired-end FASTQ reads per config/units.tsv (raw/<unit-key>_R1.fastq.gz / _R2.fastq.gz) and sample conditions in config/samples.tsv",
+      "reference genome + annotation downloaded automatically from Ensembl release 115 (GRCh38) — network access required (also for biomaRt gene-symbol annotation)",
+      "compute: up to 24 CPUs per rule (star_align); 8 (fastp_pe); 4 (star_index); no per-rule memory limits configured in the workflow",
+      "disk: several tens of GB — ~30 GB GRCh38 STAR index, plus BAMs and trimmed reads"
+    ]
+  },
   "repo_url": "https://github.com/oxo-flow-community/oxo-flow-rnaseq-star-deseq2",
-  "site_page": "https://oxo-flow-community.github.io/oxo-flow-rnaseq-star-deseq2/",
+  "license": "Apache-2.0",
   "upstream_license": "MIT"
 }

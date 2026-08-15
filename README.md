@@ -1,22 +1,110 @@
-# RNA-seq with STAR and DESeq2 (oxo-flow port)
+# oxo-flow-rnaseq-star-deseq2 — RNA-seq: STAR alignment, DESeq2 differential expression and QC
 
 [![CI](https://github.com/oxo-flow-community/oxo-flow-rnaseq-star-deseq2/actions/workflows/ci.yml/badge.svg)](https://github.com/oxo-flow-community/oxo-flow-rnaseq-star-deseq2/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-RNA-seq differential-expression pipeline: downloads the Ensembl reference
-genome + annotation, builds a STAR index, trims reads with fastp, aligns with
-STAR (sorted BAM + per-gene counts), runs RSeQC QC + MultiQC, builds the gene
-count matrix (collapsing technical replicates), annotates gene symbols via
-Ensembl biomaRt, and runs DESeq2 (normalized counts, PCA plots, per-contrast
-results with ashr shrinkage and MA plots).
+> ★ Verified · ⇄ Official port of [`snakemake-workflows/rna-seq-star-deseq2`](https://github.com/snakemake-workflows/rna-seq-star-deseq2) @ `v3.1.1` — same tools, same versions, same commands. Part of the [oxo-flow-community catalog](https://oxo-flow-community.github.io/).
+
+This workflow takes paired-end RNA-seq reads through the complete
+differential-expression analysis: it downloads the Ensembl reference genome
+and annotation (GRCh38, release 115), builds a STAR index, trims reads with
+fastp, aligns with STAR to produce sorted BAMs and per-gene counts, runs
+RSeQC QC plus a MultiQC report, builds the gene count matrix (collapsing
+technical replicates), annotates gene symbols via Ensembl biomaRt, and runs
+DESeq2 to produce normalized counts, PCA plots and per-contrast
+differential-expression results with ashr shrinkage and MA plots. Every tool
+is pinned to an exact version in conda environments, so results are
+reproducible run after run.
+
+## Installation
+
+### 1. Install oxo-flow
+
+Requires **oxo-flow >= 0.11.0**. Release binary (recommended):
+
+```bash
+curl -fL -o oxo-flow.tar.gz \
+  https://github.com/Traitome/oxo-flow/releases/download/v0.11.0/oxo-flow-v0.11.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf oxo-flow.tar.gz
+sudo mv oxo-flow /usr/local/bin/
+```
+
+Alternatively via conda: `conda install -c bioconda oxo-flow-cli` (note the
+bioconda package may lag the release binary; other platform binaries are
+available on the [releases page](https://github.com/Traitome/oxo-flow/releases)).
+
+### 2. Get this workflow
+
+```bash
+git clone https://github.com/oxo-flow-community/oxo-flow-rnaseq-star-deseq2.git
+cd oxo-flow-rnaseq-star-deseq2
+```
+
+### 3. Requirements
+
+- **Input data** — paired-end FASTQ reads, one `_R1.fastq.gz` / `_R2.fastq.gz`
+  pair per unit key at `<raw_dir>/<unit-key>_R1.fastq.gz` (e.g.
+  `raw/A-lane1_R1.fastq.gz`), declared in `config/units.tsv`; sample
+  conditions in `config/samples.tsv`. The repo ships tiny demo fixtures at
+  `test/fixtures/raw/` so the dry-run resolves every input; point `raw_dir`
+  at your own data (e.g. `raw_dir = "raw"` in `main.oxoflow`).
+- **Reference data** — none to download manually: the Ensembl reference
+  genome FASTA and annotation GTF (GRCh38, release 115, configurable via
+  `ref_species`/`ref_release`/`ref_build`) are fetched automatically at run
+  time, and `gene_2_symbol` queries Ensembl biomaRt — **network access
+  required** for both.
+- **Tools** — conda environments, all exact-pinned (`envs/*.yaml`): STAR
+  2.7.11b, fastp 1.0.1, RSeQC 5.0.4, gffutils 0.13, pandas 2.3.2, MultiQC
+  1.29, DESeq2 1.46.0 (r-stringr 1.5.1, r-ashr 2.2_63), biomaRt 2.62.0
+  (r-tidyverse 2.0.0, r-dbplyr 2.5.0). Requires conda/mamba to create them;
+  reference download uses system `curl`.
+- **Compute** — up to 24 CPUs per rule (`star_align`); 8 for `fastp_pe`, 4
+  for `star_index`, 1 elsewhere. No per-rule memory limits are configured in
+  the workflow; budget RAM for STAR indexing and alignment of human data.
+- **Disk** — several tens of GB: the GRCh38 STAR index
+  (`resources/star_genome`) is ~30 GB, plus BAMs, trimmed reads and conda
+  envs.
+
+## Usage
+
+```bash
+# 1. install oxo-flow (see Requirements)
+# 2. prepare data: <raw_dir>/<unit-key>_R1.fastq.gz / _R2.fastq.gz per config/units.tsv
+#    (raw_dir defaults to test/fixtures/raw — the tiny committed fixtures;
+#    point it at your own data, e.g. raw_dir = "raw", in main.oxoflow)
+# 3. preview the plan
+oxo-flow dry-run main.oxoflow
+# 4. run (downloads the Ensembl reference, then aligns and analyzes)
+oxo-flow run main.oxoflow -j 8
+# 5. run a subset (e.g. just the final DESeq2 contrast)
+oxo-flow run main.oxoflow -t deseq2 --samples first:2
+```
+
+Outputs (identical to upstream): `resources/genome.fasta(.gtf)`,
+`resources/star_genome/`, `results/trimmed/<unit-key>/…`,
+`results/star/<unit-key>/…`, `results/qc/rseqc/…`,
+`results/qc/multiqc_report.html`, `results/counts/all[.symbol].tsv`,
+`results/deseq2/all.rds`, `results/deseq2/normcounts[.symbol].tsv`,
+`results/diffexp/<contrast>.diffexp[.symbol].tsv` (+ MA plots),
+`results/pca.<variable>.svg`.
+
+Configuration lives in the `[config]` section of `main.oxoflow`:
+`samples_file` / `units_file` point at the sample and unit sheets, `raw_dir`
+at your FASTQ directory, and `contrasts` / `contrast_variables` /
+`contrast_levels` (paired with `diffexp_variables`, `diffexp_base_levels`,
+`diffexp_batch_effects`) drive the DESeq2 comparisons; `pca_variables` sets
+the PCA groupings and `pca_activate` / `trimming_activate` toggle the PCA and
+trimming rules. See the fidelity notes below for how these map to the
+upstream config.
 
 ## Source
 
-Ported from **[snakemake-workflows/rna-seq-star-deseq2](https://github.com/snakemake-workflows/rna-seq-star-deseq2)**,
-version `v3.1.1` (MIT, Copyright (c) 2017 Johannes Köster). This port is
-maintained independently and **may lag the upstream** — check the `v3.1.1`
-tag above (sha `aa6b17edf3396230165c18709d04cd982bdaaa4c`) and the fidelity
-table below for the exact ported state. Ported 2026-08-15.
+Upstream: **[snakemake-workflows/rna-seq-star-deseq2](https://github.com/snakemake-workflows/rna-seq-star-deseq2)**
+@ `v3.1.1` (sha
+`aa6b17edf3396230165c18709d04cd982bdaaa4c`), MIT license, Copyright (c) 2017
+Johannes Köster. Created 2026-08-15; this workflow may lag behind upstream
+releases. Upstream attribution and license details in
+[NOTICE.md](NOTICE.md).
 
 ## Fidelity
 
@@ -69,53 +157,19 @@ reads so the dry-run resolves every input; point it at your data, e.g.
 `raw_dir = "raw"`). Upstream demo-data FASTQ paths (`A.1.fq.gz` etc.) were
 renamed to this convention — data-path substitution only.
 
-## Quickstart
+## Test
 
 ```bash
-# 1. install oxo-flow (see Requirements)
-# 2. prepare data: <raw_dir>/<unit-key>_R1.fastq.gz / _R2.fastq.gz per config/units.tsv
-#    (raw_dir defaults to test/fixtures/raw — the tiny committed fixtures;
-#    point it at your own data, e.g. raw_dir = "raw", in main.oxoflow)
-# 3. preview the plan
-oxo-flow dry-run main.oxoflow
-# 4. run (downloads the Ensembl reference, then aligns and analyzes)
-oxo-flow run main.oxoflow -j 8
-# 5. run a subset (e.g. just the final DESeq2 contrast)
-oxo-flow run main.oxoflow -t deseq2 --samples first:2
+bash test/run.sh
 ```
 
-Outputs (identical to upstream): `resources/genome.fasta(.gtf)`,
-`resources/star_genome/`, `results/trimmed/<unit-key>/…`,
-`results/star/<unit-key>/…`, `results/qc/rseqc/…`,
-`results/qc/multiqc_report.html`, `results/counts/all[.symbol].tsv`,
-`results/deseq2/all.rds`, `results/deseq2/normcounts[.symbol].tsv`,
-`results/diffexp/<contrast>.diffexp[.symbol].tsv` (+ MA plots),
-`results/pca.<variable>.svg`.
-
-## Requirements
-
-- **oxo-flow ≥ 0.11.0** — install the prebuilt binary:
-
-```bash
-curl -fL -o oxo-flow.tar.gz \
-  https://github.com/Traitome/oxo-flow/releases/download/v0.11.0/oxo-flow-v0.11.0-x86_64-unknown-linux-gnu.tar.gz
-tar xzf oxo-flow.tar.gz
-sudo mv oxo-flow /usr/local/bin/
-```
-
-- Conda users may alternatively `conda install -c bioconda oxo-flow-cli`
-  (note: the bioconda package currently lags the release binary at 0.10.2 —
-  some 0.11.0 format features may not validate).
-- Conda at runtime for the tool environments declared in `main.oxoflow`
-  (`envs/*.yaml`, all exact-pinned). Network access is required for the
-  reference download (Ensembl), `gene_2_symbol` (Ensembl biomaRt) and conda
-  env creation.
+Runs `validate`, `lint`, a dry-run with the default config and a debug check
+that expanded commands contain no literal wildcards. Must exit 0 — the CI
+badge above runs the same script.
 
 ## License
 
-Apache-2.0. Copyright (c) 2026 oxo-flow-community. Upstream attribution in
+Apache-2.0. Copyright (c) 2026 oxo-flow-community. This workflow is derived
+from snakemake-workflows/rna-seq-star-deseq2, which is distributed under the
+MIT license (see [LICENSE.upstream](LICENSE.upstream)); full attribution in
 [NOTICE.md](NOTICE.md).
-
-## Community
-
-https://oxo-flow-community.github.io/
