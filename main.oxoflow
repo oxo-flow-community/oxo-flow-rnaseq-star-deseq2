@@ -55,6 +55,12 @@ raw_dir = "test/fixtures/raw"
 ref_species = "homo_sapiens"
 ref_release = "115"
 ref_build = "GRCh38"
+# Local reference overrides: set to a local FASTA/GTF to skip the Ensembl
+# download entirely (offline machines, tiny test runs). Empty = download
+# (the upstream-faithful default). A tiny synthetic kit ships at
+# test/fixtures/reference/ with matching reads in raw-synthetic/.
+genome_fasta = ""
+annotation_gtf = ""
 genome_url = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
 genome_url_toplevel = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.toplevel.fa.gz"
 annotation_url = "ftp://ftp.ensembl.org/pub/release-115/gtf/homo_sapiens/Homo_sapiens.GRCh38.115.gtf.gz"
@@ -112,12 +118,16 @@ name = "get_genome"
 description = "Download the Ensembl reference genome FASTA (upstream get_genome, ensembl-sequence wrapper: primary assembly with toplevel fallback)"
 output = ["resources/genome.fasta"]
 shell = """
-mkdir -p logs
-(if curl -fL --head {config.genome_url} >/dev/null 2>&1; then
-    curl -L {config.genome_url} | gzip -d >> resources/genome.fasta
+mkdir -p logs resources
+if [ -n "{config.genome_fasta}" ]; then
+    cp "{config.genome_fasta}" resources/genome.fasta
 else
-    curl -L {config.genome_url_toplevel} | gzip -d >> resources/genome.fasta
-fi) >> logs/get-genome.log 2>&1
+    (if curl -fL --head {config.genome_url} >/dev/null 2>&1; then
+        curl -L {config.genome_url} | gzip -d >> resources/genome.fasta
+    else
+        curl -L {config.genome_url_toplevel} | gzip -d >> resources/genome.fasta
+    fi) >> logs/get-genome.log 2>&1
+fi
 """
 
 [[rules]]
@@ -125,8 +135,12 @@ name = "get_annotation"
 description = "Download the Ensembl reference gene annotation GTF (upstream get_annotation, ensembl-annotation wrapper)"
 output = ["resources/genome.gtf"]
 shell = """
-mkdir -p logs
-(curl -L {config.annotation_url} | gzip -d > resources/genome.gtf) >> logs/get_annotation.log 2>&1
+mkdir -p logs resources
+if [ -n "{config.annotation_gtf}" ]; then
+    cp "{config.annotation_gtf}" resources/genome.gtf
+else
+    (curl -L {config.annotation_url} | gzip -d > resources/genome.gtf) >> logs/get_annotation.log 2>&1
+fi
 """
 
 [[rules]]
