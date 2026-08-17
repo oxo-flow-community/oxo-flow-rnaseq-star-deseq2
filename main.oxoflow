@@ -147,10 +147,14 @@ fi
 name = "star_index"
 description = "Build the STAR genome index (upstream star_index, star/index wrapper)"
 input = ["resources/genome.fasta", "resources/genome.gtf"]
-output = ["resources/star_genome"]
+# Sentinel-file output: a half-built index directory must not satisfy
+# freshness (live: an ENOSPC-interrupted genomeGenerate left star_genome/
+# without genomeParameters.txt, the dir-exists check skipped the rebuild,
+# and star_align died with STAR's FATAL ERROR).
+output = ["resources/star_genome/genomeParameters.txt"]
 shell = """
-mkdir -p logs .oxo-flow/tmp/star_index
-STAR --runThreadN {threads} --runMode genomeGenerate --genomeFastaFiles {input[0]} --sjdbGTFfile {input[1]} {config.star_index_extra} --outTmpDir .oxo-flow/tmp/star_index/STARtmp --genomeDir {output[0]} >> logs/star_index_genome.log 2>&1
+mkdir -p logs .oxo-flow/tmp/star_index resources/star_genome
+STAR --runThreadN {threads} --runMode genomeGenerate --genomeFastaFiles {input[0]} --sjdbGTFfile {input[1]} {config.star_index_extra} --outTmpDir .oxo-flow/tmp/star_index/STARtmp --genomeDir resources/star_genome >> logs/star_index_genome.log 2>&1
 """
 [rules.resources]
 threads = 4
