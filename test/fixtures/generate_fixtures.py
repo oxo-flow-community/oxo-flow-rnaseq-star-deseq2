@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw-synthetic")
 REF = os.path.join(HERE, "reference")
 READ_LEN = 100
-PAIRS_PER_UNIT = 1200
+PAIRS_PER_UNIT = 4000
 SEED = 42
 
 COMP = str.maketrans("ACGT", "TGCA")
@@ -32,7 +32,7 @@ COMP = str.maketrans("ACGT", "TGCA")
 # failed estimateDispersionsFit). 30% have two exons (spliced reads).
 GENES = {}
 _cursor = 1
-for _i in range(40):
+for _i in range(400):
     _strand = "+" if _i % 2 == 0 else "-"
     _start = _cursor + 50
     if _i % 3:
@@ -48,8 +48,8 @@ for _i in range(40):
 # moves g21-g40. Every unit expresses ALL 40 genes at differential
 # levels (70/30 draw split) so DESeq2's size factors and dispersion fit
 # have zero-free genes and the contrasts have real signal.
-_HIGH_T1 = [f"g{i}" for i in range(1, 21)]
-_LOW_T1 = [f"g{i}" for i in range(21, 41)]
+_HIGH_T1 = [f"g{i}" for i in range(1, 201)]
+_LOW_T1 = [f"g{i}" for i in range(201, 401)]
 UNITS = {}
 for _u in ("A-lane1", "A-lane2", "B-lane1", "F-lane1", "G-lane1"):
     UNITS[_u] = (_LOW_T1, _HIGH_T1)  # treatment_1 = untreated
@@ -69,7 +69,7 @@ PROTOCOL = {
 
 def write_genome():
     rng = random.Random(SEED)
-    seq = "".join(rng.choice("ACGT") for _ in range(30000))
+    seq = "".join(rng.choice("ACGT") for _ in range(280000))
     with open(os.path.join(REF, "genome.fa"), "w") as fh:
         fh.write(">chrA\n")
         for i in range(0, len(seq), 60):
