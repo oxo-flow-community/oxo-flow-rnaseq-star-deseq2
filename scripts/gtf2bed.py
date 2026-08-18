@@ -29,4 +29,15 @@ with open(bed_path, "w") as outfileobj:
     for tx in db.features_of_type("transcript", order_by="start"):
         bed = [s.strip() for s in db.bed12(tx).split("\t")]
         bed[3] = tx.id
+        # gffutils emits '-' strand blocks in transcript order
+        # (descending genome coordinates); RSeQC computes introns as
+        # (block_i.end, block_{i+1}.start) and dies on negative spans
+        # (live: 'Count (-501) must be non-negative' in
+        # read_distribution's BED.unionBed3). Sort the blocks in
+        # ascending genomic order.
+        sizes = [int(x) for x in bed[10].rstrip(",").split(",") if x]
+        starts = [int(x) for x in bed[11].rstrip(",").split(",") if x]
+        order = sorted(range(len(starts)), key=lambda i: starts[i])
+        bed[10] = ",".join(str(sizes[i]) for i in order) + ","
+        bed[11] = ",".join(str(starts[i]) for i in order) + ","
         outfileobj.write("{}\n".format("\t".join(bed)))

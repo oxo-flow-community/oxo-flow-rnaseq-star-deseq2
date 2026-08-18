@@ -55,6 +55,12 @@ raw_dir = "test/fixtures/raw"
 ref_species = "homo_sapiens"
 ref_release = "115"
 ref_build = "GRCh38"
+# Local reference overrides: set to a local FASTA/GTF to skip the Ensembl
+# download entirely (offline machines, tiny test runs). Empty = download
+# (the upstream-faithful default). A tiny synthetic kit ships at
+# test/fixtures/reference/ with matching reads in raw-synthetic/.
+genome_fasta = ""
+annotation_gtf = ""
 genome_url = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
 genome_url_toplevel = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.toplevel.fa.gz"
 annotation_url = "ftp://ftp.ensembl.org/pub/release-115/gtf/homo_sapiens/Homo_sapiens.GRCh38.115.gtf.gz"
@@ -101,7 +107,7 @@ threads = 1
 # repo; raw reads live at raw/<unit_key>_R1.fastq.gz / _R2.fastq.gz.
 [[sample_groups]]
 name = "units"
-samples = ["A-lane1", "A-lane2", "B-lane1", "C-lane1", "D-lane1", "E-lane1"]
+samples = ["A-lane1", "A-lane2", "B-lane1", "C-lane1", "D-lane1", "E-lane1", "F-lane1", "G-lane1", "H-lane1"]
 
 # ---------------------------------------------------------------------------
 # Reference download & index
@@ -110,33 +116,52 @@ samples = ["A-lane1", "A-lane2", "B-lane1", "C-lane1", "D-lane1", "E-lane1"]
 [[rules]]
 name = "get_genome"
 description = "Download the Ensembl reference genome FASTA (upstream get_genome, ensembl-sequence wrapper: primary assembly with toplevel fallback)"
+input = ["{config.genome_fasta}"]
 output = ["resources/genome.fasta"]
 shell = """
-mkdir -p logs
-(if curl -fL --head {config.genome_url} >/dev/null 2>&1; then
-    curl -L {config.genome_url} | gzip -d >> resources/genome.fasta
+mkdir -p logs resources
+if [ -n "{config.genome_fasta}" ]; then
+    cp "{config.genome_fasta}" resources/genome.fasta
 else
-    curl -L {config.genome_url_toplevel} | gzip -d >> resources/genome.fasta
-fi) >> logs/get-genome.log 2>&1
+    (if curl -fL --head {config.genome_url} >/dev/null 2>&1; then
+        curl -L {config.genome_url} | gzip -d >> resources/genome.fasta
+    else
+        curl -L {config.genome_url_toplevel} | gzip -d >> resources/genome.fasta
+    fi) >> logs/get-genome.log 2>&1
+fi
 """
 
 [[rules]]
 name = "get_annotation"
 description = "Download the Ensembl reference gene annotation GTF (upstream get_annotation, ensembl-annotation wrapper)"
+# The declared input makes the checkpoint track the source file, so a
+# changed local GTF invalidates the copied resources/genome.gtf (live:
+# swapping the fixture GTF left the stale copy in place and rseqc_gtf2bed
+# crashed on the old file). Empty for the download branch — the shell's
+# if/else picks the URL path in that case.
+input = ["{config.annotation_gtf}"]
 output = ["resources/genome.gtf"]
 shell = """
-mkdir -p logs
-(curl -L {config.annotation_url} | gzip -d > resources/genome.gtf) >> logs/get_annotation.log 2>&1
+mkdir -p logs resources
+if [ -n "{config.annotation_gtf}" ]; then
+    cp "{config.annotation_gtf}" resources/genome.gtf
+else
+    (curl -L {config.annotation_url} | gzip -d > resources/genome.gtf) >> logs/get_annotation.log 2>&1
+fi
 """
 
 [[rules]]
 name = "star_index"
 description = "Build the STAR genome index (upstream star_index, star/index wrapper)"
 input = ["resources/genome.fasta", "resources/genome.gtf"]
-output = ["resources/star_genome"]
+# Sentinel-file output: a half-built index directory must not satisfy
+# freshness (live: an ENOSPC-interrupted genomeGenerate left star_genome/
+# without genomeParameters.txt, the dir-exists check skipped the rebuild,
+# and star_align died with STAR's FATAL ERROR).
+output = ["resources/star_genome/genomeParameters.txt"]
 shell = """
-mkdir -p logs .oxo-flow/tmp/star_index
-STAR --runThreadN {threads} --runMode genomeGenerate --genomeFastaFiles {input[0]} --sjdbGTFfile {input[1]} {config.star_index_extra} --outTmpDir .oxo-flow/tmp/star_index/STARtmp --genomeDir {output[0]} >> logs/star_index_genome.log 2>&1
+mkdir -p logs .oxo-flow/tmp/star_index resources/star_genome
+STAR --runThreadN {threads} --runMode genomeGenerate --genomeFastaFiles {input[0]} --sjdbGTFfile {input[1]} {config.star_index_extra} --outTmpDir .oxo-flow/tmp/star_index/STARtmp --genomeDir resources/star_genome >> logs/star_index_genome.log 2>&1
 """
 [rules.resources]
 threads = 4
@@ -192,7 +217,11 @@ output = [
 ]
 shell = """
 mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
-STAR --runThreadN {threads} --genomeDir {input[0]} --readFilesIn {input[2]} {input[3]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --outStd BAM_SortedByCoordinate > {output[0]} >> logs/star/{sample}.log 2>&1
+# stdout IS the BAM (--outStd), so the log redirect must not override
+# it (live: '> bam >> log 2>&1' sent the BAM to the log and left the
+# declared output empty; rseqc died on 'file does not contain
+# alignment data')
+STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} {input[3]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
 cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
 cat .oxo-flow/tmp/star_align_{sample}/SJ.out.tab > {output[3]}
 cat .oxo-flow/tmp/star_align_{sample}/Log.out > {output[2]}
@@ -210,7 +239,7 @@ conda = "envs/star.yaml"
 [[rules]]
 name = "rseqc_gtf2bed"
 description = "Convert the reference GTF to a BED12 transcript annotation (upstream rseqc_gtf2bed, gtf2bed.py)"
-input = ["resources/genome.gtf"]
+input = ["resources/genome.gtf", "scripts/gtf2bed.py"]
 output = ["results/qc/rseqc/annotation.bed", "results/qc/rseqc/annotation.db"]
 temp_output = ["results/qc/rseqc/annotation.db"]
 script = "scripts/gtf2bed.py {input[0]} {output[0]} {output[1]}"
@@ -274,7 +303,7 @@ name = "rseqc_innerdis"
 description = "Inner distance distribution with RSeQC (upstream rseqc_innerdis)"
 priority = 1
 input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseqc/annotation.bed"]
-output = ["results/qc/rseqc/{sample}.inner_distance_freq.inner_distance.txt"]
+output = ["results/qc/rseqc/{sample}.inner_distance_freq.txt"]
 shell = """
 mkdir -p logs/rseqc/rseqc_innerdis
 inner_distance.py -r {input[1]} -i {input[0]} -o results/qc/rseqc/{sample} > logs/rseqc/rseqc_innerdis/{sample}.log 2>&1
@@ -330,7 +359,7 @@ expand_inputs = [
     { pattern = "results/qc/rseqc/{sample}.junctionsat.junctionSaturation_plot.pdf", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.stats.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "results/qc/rseqc/{sample}.inner_distance_freq.inner_distance.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.inner_distance_freq.txt", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.readdistribution.txt", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.readdup.DupRate_plot.pdf", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.readgc.GC_plot.pdf", variables = { sample = "config.samples_list" } },
@@ -397,7 +426,7 @@ name = "deseq2_init"
 description = "Build the DESeq2 dataset, run DESeq and write normalized counts (upstream deseq2_init, deseq2-init.R)"
 input = ["results/counts/all.tsv", "config/samples.tsv"]
 output = ["results/deseq2/all.rds", "results/deseq2/normcounts.tsv"]
-script = "scripts/deseq2-init.R {input[0]} {input[1]} {output[0]} {output[1]} {config.diffexp_model} {config.diffexp_variables} {config.diffexp_base_levels} {config.diffexp_batch_effects} {threads} logs/deseq2/init.log"
+script = "scripts/deseq2-init.R {input[0]} {input[1]} {output[0]} {output[1]} \"\" {config.diffexp_variables} {config.diffexp_base_levels} {config.diffexp_batch_effects} {threads} logs/deseq2/init.log"
 [rules.resources]
 threads = 1
 [rules.environment]
@@ -416,12 +445,31 @@ threads = 1
 conda = "envs/deseq2.yaml"
 
 [[rules]]
-name = "pca"
-description = "PCA plot of rlog-transformed counts per variable of interest / batch effect (upstream pca, plot-pca.R)"
+name = "pca_treatment_1"
+description = "PCA plot of rlog-transformed counts per variable of interest (upstream pca, plot-pca.R). One rule per pca_variables entry — the engine's scatter does not substitute {variable} inside the script field (live: plotPCA got the literal string as intgroup)."
 when = "config.pca_activate"
-scatter = { variable = "variable", values_from = "config.pca_variables" }
 input = ["results/deseq2/all.rds"]
-output = ["results/pca.{variable}.svg"]
-script = "scripts/plot-pca.R {input[0]} {output[0]} {variable} logs/pca.{variable}.log"
+output = ["results/pca.treatment_1.svg"]
+script = "scripts/plot-pca.R {input[0]} {output[0]} treatment_1 logs/pca.treatment_1.log"
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+[[rules]]
+name = "pca_treatment_2"
+description = "PCA plot for the treatment_2 variable (see pca_treatment_1)"
+when = "config.pca_activate"
+input = ["results/deseq2/all.rds"]
+output = ["results/pca.treatment_2.svg"]
+script = "scripts/plot-pca.R {input[0]} {output[0]} treatment_2 logs/pca.treatment_2.log"
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+[[rules]]
+name = "pca_jointly_handled"
+description = "PCA plot for the jointly_handled batch effect (see pca_treatment_1)"
+when = "config.pca_activate"
+input = ["results/deseq2/all.rds"]
+output = ["results/pca.jointly_handled.svg"]
+script = "scripts/plot-pca.R {input[0]} {output[0]} jointly_handled logs/pca.jointly_handled.log"
 [rules.environment]
 conda = "envs/deseq2.yaml"
