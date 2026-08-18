@@ -82,7 +82,10 @@ def write_gtf():
     for gene, (strand, start, end, exons) in GENES.items():
         for tx_i in (1, 2):
             tx = f"{gene}_T{tx_i}"
-            tx_exons = exons if tx_i == 1 else [exons[0], exons[-1]]
+            # for single-exon genes [exons[0], exons[-1]] would duplicate
+            # the same exon and gffutils emits two identical BED blocks
+            # (live: RSeQC introns went negative)
+            tx_exons = exons if tx_i == 1 or len(exons) == 1 else [exons[0], exons[-1]]
             tx_start = tx_exons[0][0]
             tx_end = tx_exons[-1][1]
             lines.append(
