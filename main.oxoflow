@@ -239,7 +239,7 @@ conda = "envs/star.yaml"
 [[rules]]
 name = "rseqc_gtf2bed"
 description = "Convert the reference GTF to a BED12 transcript annotation (upstream rseqc_gtf2bed, gtf2bed.py)"
-input = ["resources/genome.gtf"]
+input = ["resources/genome.gtf", "scripts/gtf2bed.py"]
 output = ["results/qc/rseqc/annotation.bed", "results/qc/rseqc/annotation.db"]
 temp_output = ["results/qc/rseqc/annotation.db"]
 script = "scripts/gtf2bed.py {input[0]} {output[0]} {output[1]}"
