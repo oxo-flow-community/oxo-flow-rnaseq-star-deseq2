@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw-synthetic")
 REF = os.path.join(HERE, "reference")
 READ_LEN = 100
-PAIRS_PER_UNIT = 150
+PAIRS_PER_UNIT = 300
 SEED = 42
 
 COMP = str.maketrans("ACGT", "TGCA")
@@ -34,10 +34,16 @@ GENES = {
     "g3": ("-", 1201, 1600, [(1201, 1300), (1351, 1450), (1501, 1600)]),
     "g4": ("-", 1701, 2200, [(1701, 1800), (1851, 1950), (2001, 2200)]),
 }
-# unit -> genes it expresses (two conditions for DESeq2)
+# unit -> (high genes, low genes): every unit expresses ALL four genes
+# at differential levels (live: the previous on/off design left every
+# gene zero in half the samples and DESeq2 died on 'every gene
+# contains at least one zero'). 70% of reads come from the high set,
+# 30% from the low set.
 UNITS = {
-    "A-lane1": ["g1", "g2"], "A-lane2": ["g1", "g2"], "B-lane1": ["g1", "g2"],
-    "C-lane1": ["g3", "g4"], "D-lane1": ["g3", "g4"], "E-lane1": ["g3", "g4"],
+    "A-lane1": (["g1", "g2"], ["g3", "g4"]), "A-lane2": (["g1", "g2"], ["g3", "g4"]),
+    "B-lane1": (["g1", "g2"], ["g3", "g4"]),
+    "C-lane1": (["g3", "g4"], ["g1", "g2"]), "D-lane1": (["g3", "g4"], ["g1", "g2"]),
+    "E-lane1": (["g3", "g4"], ["g1", "g2"]),
 }
 
 
@@ -120,10 +126,10 @@ def write_units(genome):
     # synthetic set) receive the same generated reads — either path is
     # coherent with the generated reference.
     rng = random.Random(SEED + 7)
-    for unit, genes in UNITS.items():
+    for unit, (high_genes, low_genes) in UNITS.items():
         r1, r2 = [], []
         for i in range(PAIRS_PER_UNIT):
-            gene = rng.choice(genes)
+            gene = rng.choice(high_genes) if rng.random() < 0.7 else rng.choice(low_genes)
             tx = draw_read(genome, gene, rng)
             tx = mutate(tx, rng)
             mate_start = rng.randint(0, max(1, len(tx) - READ_LEN))
