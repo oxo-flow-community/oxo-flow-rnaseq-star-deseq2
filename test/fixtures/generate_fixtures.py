@@ -45,6 +45,15 @@ UNITS = {
     "C-lane1": (["g3", "g4"], ["g1", "g2"]), "D-lane1": (["g3", "g4"], ["g1", "g2"]),
     "E-lane1": (["g3", "g4"], ["g1", "g2"]),
 }
+# unit -> library strandedness (mirrors config/units.tsv). The reverse
+# protocol (TruSeq) sequences R1 as ANTISENSE of the RNA — live: R1 was
+# emitted as the sense transcript, so STAR's reverse-stranded column
+# counted nothing for the '-' genes and the DESeq2 matrix had zero
+# columns for the D/E units.
+PROTOCOL = {
+    "A-lane1": "yes", "A-lane2": "yes", "B-lane1": "yes",
+    "C-lane1": "none", "D-lane1": "reverse", "E-lane1": "reverse",
+}
 
 
 def write_genome():
@@ -138,8 +147,14 @@ def write_units(genome):
             mate = tx[mate_start : mate_start + READ_LEN]
             if len(mate) < READ_LEN:
                 mate = (tx + tx)[mate_start : mate_start + READ_LEN]
-            r1.append(f"@{unit}_{i}/1\n{tx}\n+\n{'J' * READ_LEN}")
-            r2.append(f"@{unit}_{i}/2\n{revcomp(mutate(mate, rng))}\n+\n{'J' * READ_LEN}")
+            if PROTOCOL[unit] == "reverse":
+                # R1 = antisense of the RNA, R2 = sense
+                r1.append(f"@{unit}_{i}/1\n{revcomp(tx)}\n+\n{'J' * READ_LEN}")
+                r2.append(f"@{unit}_{i}/2\n{mutate(mate, rng)}\n+\n{'J' * READ_LEN}")
+            else:
+                # R1 = sense, R2 = antisense (forward protocol / unstranded)
+                r1.append(f"@{unit}_{i}/1\n{tx}\n+\n{'J' * READ_LEN}")
+                r2.append(f"@{unit}_{i}/2\n{revcomp(mutate(mate, rng))}\n+\n{'J' * READ_LEN}")
         for d in (RAW, os.path.join(HERE, "raw")):
             os.makedirs(d, exist_ok=True)
             with gzip.open(os.path.join(d, f"{unit}_R1.fastq.gz"), "wt") as f1, gzip.open(
