@@ -426,7 +426,7 @@ name = "deseq2_init"
 description = "Build the DESeq2 dataset, run DESeq and write normalized counts (upstream deseq2_init, deseq2-init.R)"
 input = ["results/counts/all.tsv", "config/samples.tsv"]
 output = ["results/deseq2/all.rds", "results/deseq2/normcounts.tsv"]
-script = "scripts/deseq2-init.R {input[0]} {input[1]} {output[0]} {output[1]} {config.diffexp_model} {config.diffexp_variables} {config.diffexp_base_levels} {config.diffexp_batch_effects} {threads} logs/deseq2/init.log"
+script = "scripts/deseq2-init.R {input[0]} {input[1]} {output[0]} {output[1]} \"\" {config.diffexp_variables} {config.diffexp_base_levels} {config.diffexp_batch_effects} {threads} logs/deseq2/init.log"
 [rules.resources]
 threads = 1
 [rules.environment]
