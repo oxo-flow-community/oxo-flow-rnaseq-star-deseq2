@@ -44,6 +44,11 @@ UNITS = {
     "B-lane1": (["g1", "g2"], ["g3", "g4"]),
     "C-lane1": (["g3", "g4"], ["g1", "g2"]), "D-lane1": (["g3", "g4"], ["g1", "g2"]),
     "E-lane1": (["g3", "g4"], ["g1", "g2"]),
+    # replicates so every treatment combination has >=2 samples
+    # (live: DESeq2 'checkForExperimentalReplicates' — the interaction
+    # design needs replicate support per combo)
+    "F-lane1": (["g1", "g2"], ["g3", "g4"]), "G-lane1": (["g1", "g2"], ["g3", "g4"]),
+    "H-lane1": (["g3", "g4"], ["g1", "g2"]),
 }
 # unit -> library strandedness (mirrors config/units.tsv). The reverse
 # protocol (TruSeq) sequences R1 as ANTISENSE of the RNA — live: R1 was
@@ -53,6 +58,7 @@ UNITS = {
 PROTOCOL = {
     "A-lane1": "yes", "A-lane2": "yes", "B-lane1": "yes",
     "C-lane1": "none", "D-lane1": "reverse", "E-lane1": "reverse",
+    "F-lane1": "yes", "G-lane1": "yes", "H-lane1": "reverse",
 }
 
 

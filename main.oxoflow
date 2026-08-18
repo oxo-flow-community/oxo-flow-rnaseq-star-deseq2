@@ -107,7 +107,7 @@ threads = 1
 # repo; raw reads live at raw/<unit_key>_R1.fastq.gz / _R2.fastq.gz.
 [[sample_groups]]
 name = "units"
-samples = ["A-lane1", "A-lane2", "B-lane1", "C-lane1", "D-lane1", "E-lane1"]
+samples = ["A-lane1", "A-lane2", "B-lane1", "C-lane1", "D-lane1", "E-lane1", "F-lane1", "G-lane1", "H-lane1"]
 
 # ---------------------------------------------------------------------------
 # Reference download & index
