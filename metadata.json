@@ -2,7 +2,7 @@
   "name": "oxo-flow-rnaseq-star-deseq2",
   "title": "RNA-seq: STAR alignment, DESeq2 differential expression and QC",
   "origin": "port",
-  "rating": "verified",
+  "rating": "live-verified",
   "engine": "snakemake",
   "source": {
     "repo": "snakemake-workflows/rna-seq-star-deseq2",
