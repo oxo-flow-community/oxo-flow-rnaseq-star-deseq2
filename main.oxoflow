@@ -303,7 +303,7 @@ name = "rseqc_innerdis"
 description = "Inner distance distribution with RSeQC (upstream rseqc_innerdis)"
 priority = 1
 input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseqc/annotation.bed"]
-output = ["results/qc/rseqc/{sample}.inner_distance_freq.inner_distance.txt"]
+output = ["results/qc/rseqc/{sample}.inner_distance_freq.txt"]
 shell = """
 mkdir -p logs/rseqc/rseqc_innerdis
 inner_distance.py -r {input[1]} -i {input[0]} -o results/qc/rseqc/{sample} > logs/rseqc/rseqc_innerdis/{sample}.log 2>&1
@@ -359,7 +359,7 @@ expand_inputs = [
     { pattern = "results/qc/rseqc/{sample}.junctionsat.junctionSaturation_plot.pdf", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.infer_experiment.txt", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.stats.txt", variables = { sample = "config.samples_list" } },
-    { pattern = "results/qc/rseqc/{sample}.inner_distance_freq.inner_distance.txt", variables = { sample = "config.samples_list" } },
+    { pattern = "results/qc/rseqc/{sample}.inner_distance_freq.txt", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.readdistribution.txt", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.readdup.DupRate_plot.pdf", variables = { sample = "config.samples_list" } },
     { pattern = "results/qc/rseqc/{sample}.readgc.GC_plot.pdf", variables = { sample = "config.samples_list" } },
