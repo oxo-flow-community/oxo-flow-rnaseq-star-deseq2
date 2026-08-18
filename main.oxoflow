@@ -445,12 +445,31 @@ threads = 1
 conda = "envs/deseq2.yaml"
 
 [[rules]]
-name = "pca"
-description = "PCA plot of rlog-transformed counts per variable of interest / batch effect (upstream pca, plot-pca.R)"
+name = "pca_treatment_1"
+description = "PCA plot of rlog-transformed counts per variable of interest (upstream pca, plot-pca.R). One rule per pca_variables entry — the engine's scatter does not substitute {variable} inside the script field (live: plotPCA got the literal string as intgroup)."
 when = "config.pca_activate"
-scatter = { variable = "variable", values_from = "config.pca_variables" }
 input = ["results/deseq2/all.rds"]
-output = ["results/pca.{variable}.svg"]
-script = "scripts/plot-pca.R {input[0]} {output[0]} {variable} logs/pca.{variable}.log"
+output = ["results/pca.treatment_1.svg"]
+script = "scripts/plot-pca.R {input[0]} {output[0]} treatment_1 logs/pca.treatment_1.log"
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+[[rules]]
+name = "pca_treatment_2"
+description = "PCA plot for the treatment_2 variable (see pca_treatment_1)"
+when = "config.pca_activate"
+input = ["results/deseq2/all.rds"]
+output = ["results/pca.treatment_2.svg"]
+script = "scripts/plot-pca.R {input[0]} {output[0]} treatment_2 logs/pca.treatment_2.log"
+[rules.environment]
+conda = "envs/deseq2.yaml"
+
+[[rules]]
+name = "pca_jointly_handled"
+description = "PCA plot for the jointly_handled batch effect (see pca_treatment_1)"
+when = "config.pca_activate"
+input = ["results/deseq2/all.rds"]
+output = ["results/pca.jointly_handled.svg"]
+script = "scripts/plot-pca.R {input[0]} {output[0]} jointly_handled logs/pca.jointly_handled.log"
 [rules.environment]
 conda = "envs/deseq2.yaml"
