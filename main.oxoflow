@@ -116,6 +116,7 @@ samples = ["A-lane1", "A-lane2", "B-lane1", "C-lane1", "D-lane1", "E-lane1"]
 [[rules]]
 name = "get_genome"
 description = "Download the Ensembl reference genome FASTA (upstream get_genome, ensembl-sequence wrapper: primary assembly with toplevel fallback)"
+input = ["{config.genome_fasta}"]
 output = ["resources/genome.fasta"]
 shell = """
 mkdir -p logs resources
@@ -133,6 +134,12 @@ fi
 [[rules]]
 name = "get_annotation"
 description = "Download the Ensembl reference gene annotation GTF (upstream get_annotation, ensembl-annotation wrapper)"
+# The declared input makes the checkpoint track the source file, so a
+# changed local GTF invalidates the copied resources/genome.gtf (live:
+# swapping the fixture GTF left the stale copy in place and rseqc_gtf2bed
+# crashed on the old file). Empty for the download branch — the shell's
+# if/else picks the URL path in that case.
+input = ["{config.annotation_gtf}"]
 output = ["resources/genome.gtf"]
 shell = """
 mkdir -p logs resources
