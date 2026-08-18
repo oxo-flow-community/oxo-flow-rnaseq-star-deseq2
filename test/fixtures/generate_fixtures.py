@@ -69,7 +69,7 @@ PROTOCOL = {
 
 def write_genome():
     rng = random.Random(SEED)
-    seq = "".join(rng.choice("ACGT") for _ in range(280000))
+    seq = "".join(rng.choice("ACGT") for _ in range(320000))
     with open(os.path.join(REF, "genome.fa"), "w") as fh:
         fh.write(">chrA\n")
         for i in range(0, len(seq), 60):
