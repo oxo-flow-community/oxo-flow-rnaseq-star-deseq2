@@ -22,34 +22,39 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw-synthetic")
 REF = os.path.join(HERE, "reference")
 READ_LEN = 100
-PAIRS_PER_UNIT = 300
+PAIRS_PER_UNIT = 1200
 SEED = 42
 
 COMP = str.maketrans("ACGT", "TGCA")
 
-# gene -> (strand, start, end, [exon (start, end), ...])
-GENES = {
-    "g1": ("+", 101, 500, [(101, 200), (251, 350), (401, 500)]),
-    "g2": ("+", 601, 1000, [(601, 700), (751, 850), (901, 1000)]),
-    "g3": ("-", 1201, 1600, [(1201, 1300), (1351, 1450), (1501, 1600)]),
-    "g4": ("-", 1701, 2200, [(1701, 1800), (1851, 1950), (2001, 2200)]),
-}
-# unit -> (high genes, low genes): every unit expresses ALL four genes
-# at differential levels (live: the previous on/off design left every
-# gene zero in half the samples and DESeq2 died on 'every gene
-# contains at least one zero'). 70% of reads come from the high set,
-# 30% from the low set.
-UNITS = {
-    "A-lane1": (["g1", "g2"], ["g3", "g4"]), "A-lane2": (["g1", "g2"], ["g3", "g4"]),
-    "B-lane1": (["g1", "g2"], ["g3", "g4"]),
-    "C-lane1": (["g3", "g4"], ["g1", "g2"]), "D-lane1": (["g3", "g4"], ["g1", "g2"]),
-    "E-lane1": (["g3", "g4"], ["g1", "g2"]),
-    # replicates so every treatment combination has >=2 samples
-    # (live: DESeq2 'checkForExperimentalReplicates' — the interaction
-    # design needs replicate support per combo)
-    "F-lane1": (["g1", "g2"], ["g3", "g4"]), "G-lane1": (["g1", "g2"], ["g3", "g4"]),
-    "H-lane1": (["g3", "g4"], ["g1", "g2"]),
-}
+# gene -> (strand, start, end, [exon (start, end), ...]). 40 genes so
+# DESeq2's dispersion fit has support (live: 4 genes x 8 samples still
+# failed estimateDispersionsFit). 30% have two exons (spliced reads).
+GENES = {}
+_cursor = 1
+for _i in range(40):
+    _strand = "+" if _i % 2 == 0 else "-"
+    _start = _cursor + 50
+    if _i % 3:
+        _exons = [(_start, _start + 500)]
+        _end = _start + 500
+    else:
+        _exons = [(_start, _start + 300), (_start + 400, _start + 600)]
+        _end = _start + 600
+    GENES[f"g{_i + 1}"] = (_strand, _start, _end, _exons)
+    _cursor = _end + 100
+# unit -> (high genes, low genes): the treatment_1 effect moves the
+# g1-g20 half (high when treatment_1 = treated), the treatment_2 effect
+# moves g21-g40. Every unit expresses ALL 40 genes at differential
+# levels (70/30 draw split) so DESeq2's size factors and dispersion fit
+# have zero-free genes and the contrasts have real signal.
+_HIGH_T1 = [f"g{i}" for i in range(1, 21)]
+_LOW_T1 = [f"g{i}" for i in range(21, 41)]
+UNITS = {}
+for _u in ("A-lane1", "A-lane2", "B-lane1", "F-lane1", "G-lane1"):
+    UNITS[_u] = (_LOW_T1, _HIGH_T1)  # treatment_1 = untreated
+for _u in ("C-lane1", "D-lane1", "E-lane1", "H-lane1"):
+    UNITS[_u] = (_HIGH_T1, _LOW_T1)  # treatment_1 = treated
 # unit -> library strandedness (mirrors config/units.tsv). The reverse
 # protocol (TruSeq) sequences R1 as ANTISENSE of the RNA — live: R1 was
 # emitted as the sense transcript, so STAR's reverse-stranded column
@@ -64,7 +69,7 @@ PROTOCOL = {
 
 def write_genome():
     rng = random.Random(SEED)
-    seq = "".join(rng.choice("ACGT") for _ in range(2500))
+    seq = "".join(rng.choice("ACGT") for _ in range(30000))
     with open(os.path.join(REF, "genome.fa"), "w") as fh:
         fh.write(">chrA\n")
         for i in range(0, len(seq), 60):
