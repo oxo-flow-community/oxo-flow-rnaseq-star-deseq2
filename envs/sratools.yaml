@@ -1,0 +1,10 @@
+# SRA download (upstream v7.2.0/bio/sra-tools/fasterq-dump wrapper env:
+# sra-tools + pigz for the wrapper's compression step).
+name: sratools
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - sra-tools =3.1.1
+  - pigz =2.8

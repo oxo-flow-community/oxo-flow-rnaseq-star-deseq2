@@ -48,6 +48,10 @@ cd oxo-flow-rnaseq-star-deseq2
   conditions in `config/samples.tsv`. The repo ships tiny demo fixtures at
   `test/fixtures/raw/` so the dry-run resolves every input; point `raw_dir`
   at your own data (e.g. `raw_dir = "raw"` in `main.oxoflow`).
+  Single-end units (raw `<unit-key>_R1.fastq.gz` without `_R2`) go into the
+  `se_units` sample group; SRA units (reads downloaded by `get_sra` with
+  `sra-tools`) go into the `sra_units` sample group — both are empty by
+  default and **DRAFT** (validated, not yet live-tested).
 - **Reference data** — none to download manually: the Ensembl reference
   genome FASTA and annotation GTF (GRCh38, release 115, configurable via
   `ref_species`/`ref_release`/`ref_build`) are fetched automatically at run
@@ -56,8 +60,9 @@ cd oxo-flow-rnaseq-star-deseq2
 - **Tools** — conda environments, all exact-pinned (`envs/*.yaml`): STAR
   2.7.11b, fastp 1.0.1, RSeQC 5.0.4, gffutils 0.13, pandas 2.3.2, MultiQC
   1.29, DESeq2 1.46.0 (r-stringr 1.5.1, r-ashr 2.2_63), biomaRt 2.62.0
-  (r-tidyverse 2.0.0, r-dbplyr 2.5.0). Requires conda/mamba to create them;
-  reference download uses system `curl`.
+  (r-tidyverse 2.0.0, r-dbplyr 2.5.0); `sra-tools 3.1.1 + pigz 2.8` for the
+  SRA branch (`envs/sratools.yaml`, DRAFT). Requires conda/mamba to create
+  them; reference download uses system `curl`.
 - **Compute** — up to 24 CPUs per rule (`star_align`); 8 for `fastp_pe`, 4
   for `star_index`, 1 elsewhere. No per-rule memory limits are configured in
   the workflow; budget RAM for STAR indexing and alignment of human data.
@@ -97,6 +102,27 @@ the PCA groupings and `pca_activate` / `trimming_activate` toggle the PCA and
 trimming rules. See the fidelity notes below for how these map to the
 upstream config.
 
+DRAFT-mode switches (all empty/off by default; each spawns instances only
+when set):
+- `se_units` ([[sample_groups]]) — single-end unit keys; consumed by
+  `fastp_se` / `star_align_se`, skipped by the paired-end rules.
+- `sra_units` ([[sample_groups]]) — SRA unit keys; `get_sra` downloads each
+  unit's reads (accession = unit key suffix after the last `-`, e.g.
+  `A-SRR20108340` → SRR20108340) into `<raw_dir>/`, where the regular
+  `fastp_pe` / `star_align` rules pick them up. `sra_extra` passes extra
+  fasterq-dump args (default `-x`, upstream's default). Keep matching
+  `config/units.tsv` rows (count_matrix reads strandedness and the
+  unit-to-sample mapping from them) and list the samples in
+  `config/samples.tsv`.
+- `pca_labels` — extra `config/samples.tsv` columns to plot PCA for
+  (upstream `pca.labels`); one `results/pca.<label>.svg` per entry.
+- `contrast_expressions` — `;;`-joined per-contrast R expressions
+  (upstream string-form contrasts, the `eval(parse(...))` branch of
+  deseq2.R); an empty entry selects the list-form contrast. Use single
+  quotes inside expressions.
+- `diffexp_model` — custom DESeq2 design model (upstream
+  `diffexp.design_model`); empty = auto-built interaction model.
+
 ## Source
 
 Upstream: **[snakemake-workflows/rna-seq-star-deseq2](https://github.com/snakemake-workflows/rna-seq-star-deseq2)**
@@ -108,10 +134,13 @@ releases. Upstream attribution and license details in
 
 ## Fidelity
 
-Scope: the **default-parameters main execution path** (upstream `rule all`).
-Rows cover every upstream rule; "not ported" rows carry a reason. Upstream
-rules use snakemake wrappers v7.2.0 (`bio/fastp`, `bio/star/*`,
-`bio/multiqc`, `bio/reference/ensembl-*`, `bio/samtools/faidx`,
+Scope: the **default-parameters main execution path** (upstream `rule all`)
+plus the single-end and SRA branches (upstream's `fastp_se`/`get_sra` rules
+and the single-end `star_align` variant) — the latter are marked **DRAFT**
+(validated by `test/run.sh` dry-runs, not yet live-tested). Rows cover every
+upstream rule; "not ported" rows carry a reason. Upstream rules use snakemake
+wrappers v7.2.0 (`bio/fastp`, `bio/star/*`, `bio/multiqc`,
+`bio/reference/ensembl-*`, `bio/sra-tools/fasterq-dump`, `bio/samtools/faidx`,
 `bio/bwa/index`) whose conda pins were carried over verbatim.
 
 | Upstream rule | oxo-flow rule | Tool (version) | Notes |
@@ -119,10 +148,10 @@ rules use snakemake wrappers v7.2.0 (`bio/fastp`, `bio/star/*`,
 | get_genome | `get_genome` | curl (system) + Ensembl FTP/HTTPS | ensembl-sequence wrapper: primary_assembly URL with toplevel fallback; probe/fallback restructured into shell, HTTPS branch only (upstream also probes FTP) |
 | get_annotation | `get_annotation` | curl (system) + Ensembl FTP/HTTPS | ensembl-annotation wrapper, identical URL + `gzip -d` logic |
 | star_index | `star_index` | STAR 2.7.11b | star/index wrapper verbatim; tmpdir moved to `.oxo-flow/tmp/star_index` |
-| fastp_pe | `fastp_pe` | fastp 1.0.1 | fastp wrapper verbatim (extra + adapters + reads + trimmed + json + html ordering); upstream per-unit `fastp_adapters`/`fastp_extra` columns → global `[config] fastp_adapters`/`fastp_extra` (defaults equal upstream defaults) |
-| star_align | `star_align` | STAR 2.7.11b | star/align wrapper verbatim: `--outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "<gtf>"` in the upstream extra-string order, `--readFilesCommand gunzip -c`, `--outStd BAM_SortedByCoordinate` to the BAM, `cat` of ReadsPerGene/SJ/Logs out of the tmp prefix |
-| get_sra | not ported | sra-tools | SRA-accession branch (fasterq-dump); not in the default path |
-| fastp_se | not ported | fastp | single-end branch; not in the default path (paired-end fixtures) |
+| fastp_pe | `fastp_pe` | fastp 1.0.1 | fastp wrapper verbatim (extra + adapters + reads + trimmed + json + html ordering); upstream per-unit `fastp_adapters`/`fastp_extra` columns → global `[config] fastp_adapters`/`fastp_extra` (defaults equal upstream defaults). `optional = true`: instances whose raw `_R2` is missing (single-end/SRA units) are skipped, not failed |
+| star_align | `star_align` | STAR 2.7.11b | star/align wrapper verbatim: `--outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "<gtf>"` in the upstream extra-string order, `--readFilesCommand gunzip -c`, `--outStd BAM_SortedByCoordinate` to the BAM, `cat` of ReadsPerGene/SJ/Logs out of the tmp prefix. `optional = true` (single-end units are aligned by `star_align_se`) |
+| get_sra | `get_sra` | sra-tools 3.1.1, pigz 2.8 (envs/sratools.yaml) | **DRAFT** — fasterq-dump wrapper verbatim (`--temp/--threads/--outdir sra`, `-x`, pigz compression), but the downloaded reads land at `<raw_dir>/<unit-key>_R1.fastq.gz` / `_R2.fastq.gz` (upstream keeps them under `sra/`), so the regular `fastp_pe`/`star_align` chain consumes them. Deviation: upstream resolves the SRA accession from the units.tsv `sra` column via pandas; the port takes it from the unit key's `-` suffix (upstream's own `unit_name = <accession>` convention). Scatters over the `sra_units` group; zero instances when the group is empty |
+| fastp_se | `fastp_se` | fastp 1.0.1 | **DRAFT** — fastp wrapper verbatim: threads 4, adapters default `""`, output `_single.fastq.gz` (+ failed/html/json), `--in1` single read. Scatters over the `se_units` group; zero instances when the group is empty |
 | rseqc_gtf2bed | `rseqc_gtf2bed` | gffutils 0.13 | gtf2bed.py ported to CLI args; `annotation.db` is `temp_output` (= upstream `temp()`) |
 | rseqc_junction_annotation | `rseqc_junction_annotation` | RSeQC 5.0.4 | `junction_annotation.py -q 255 -i <bam> -r <bed> -o <prefix>` verbatim |
 | rseqc_junction_saturation | `rseqc_junction_saturation` | RSeQC 5.0.4 | `junction_saturation.py -q 255 ...` verbatim |
@@ -136,8 +165,8 @@ rules use snakemake wrappers v7.2.0 (`bio/fastp`, `bio/star/*`,
 | count_matrix | `count_matrix` | pandas 2.3.2 | count-matrix.py logic identical (strandedness column pick 1/2/3, sample naming, `groupby(...).sum()` collapse of technical replicates); unit→(sample, strandedness) mapping read from `config/units.tsv` instead of snakemake params |
 | gene_2_symbol | `gene_2_symbol_counts` / `gene_2_symbol_normcounts` / `gene_2_symbol_diffexp` | biomaRt 2.62.0, r-tidyverse 2.0.0 | upstream is one wildcard-generic rule over `{prefix}`; the port makes the three call sites explicit (oxo-flow has no arbitrary `{prefix}` wildcard). `{contrast}` variant scatters per contrast |
 | deseq2_init | `deseq2_init` | DESeq2 1.46.0 | deseq2-init.R logic identical (relevel base levels, batch-effect factors, default interaction model, `rowSums>1` filter, normalized counts); config values passed as CLI args |
-| pca | `pca` | DESeq2 1.46.0 | plot-pca.R verbatim (`rlog(blind=FALSE)`, `plotPCA(intgroup=variable)`); one instance per `pca_variables` entry; gated by `pca_activate` |
-| deseq2 | `deseq2` | DESeq2 1.46.0, r-ashr 2.2_63 | deseq2.R logic identical (list-form contrast = vof + level + base_level, ashr `lfcShrink`, `order(padj)`, MA plot); complex string-form contrasts not ported (not in default config); one instance per `contrasts` entry |
+| pca | `pca_treatment_1`/`pca_treatment_2`/`pca_jointly_handled` + `pca_label` | DESeq2 1.46.0 | plot-pca.R verbatim (`rlog(blind=FALSE)`, `plotPCA(intgroup=variable)`); one static rule per `pca_variables` entry (upstream's `{variable}` wildcard does not substitute inside script fields — see the rule comment), gated by `pca_activate`. `pca_label` (**DRAFT**) scatters over `pca_labels` and calls Rscript via a shell field (scatter does substitute there) |
+| deseq2 | `deseq2` | DESeq2 1.46.0, r-ashr 2.2_63 | deseq2.R logic identical (list-form contrast = vof + level + base_level, ashr `lfcShrink`, `order(padj)`, MA plot) **plus** the upstream string-form `eval(parse(...))` branch (complex contrasts via `contrast_expressions`); one instance per `contrasts` entry. The engine substitutes scatter variables in shell fields but not script fields, so the rule is shell-based (Rscript) and deseq2.R derives its contrast id from the output-table filename (matched against `config.contrasts`); the per-contrast log path is `{contrast}`-expanded in the shell. `diffexp_model` is wired into deseq2-init.R's design-model argument |
 | bwa_index | not ported | bwa | no consumer in the default path (upstream `rule all` never requests it) |
 | genome_faidx | not ported | samtools | no consumer in the default path |
 | report/ (`report/*.rst`) | not ported | — | Snakemake report artifacts; no oxo-flow equivalent |
