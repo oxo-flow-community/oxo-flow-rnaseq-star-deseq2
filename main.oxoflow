@@ -29,10 +29,16 @@
 #   primary assembly URL, fall back to toplevel. Only the HTTPS protocol
 #   branch is ported (upstream also tries FTP).
 #
-# Not ported (see README fidelity table): get_sra (SRA branch), fastp_se
-# (single-end branch), bwa_index and genome_faidx (no consumer in the
-# default path), the trimming-off rewiring (align from raw reads), the
-# Snakemake report (.rst files), per-unit adapter lookup.
+# Ported since 2026-08-26: get_sra (SRA branch, gated on sra_accessions),
+# fastp_se (single-end branch, gated on single_end), bwa_index and
+# genome_faidx (gated on explicit *_activate flags — upstream relies on
+# snakemake lazy evaluation, oxo-flow runs every rule), the trimming-off
+# rewiring (star_align_raw / star_align_se_raw), single-end alignment
+# (star_align_se), and string-form DESeq2 contrasts (contrast_exprs).
+# Not ported (see README fidelity table): the Snakemake report (.rst files,
+# sphinx-based --report machinery), per-unit fastp_adapters/fastp_extra
+# lookup (engine has no per-wildcard data lookup), and the automatic feed
+# of downloaded SRA reads into trimming/alignment (per-unit input binding).
 
 [workflow]
 name = "oxo-flow-rnaseq-star-deseq2"
@@ -64,14 +70,33 @@ annotation_gtf = ""
 genome_url = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
 genome_url_toplevel = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.toplevel.fa.gz"
 annotation_url = "ftp://ftp.ensembl.org/pub/release-115/gtf/homo_sapiens/Homo_sapiens.GRCh38.115.gtf.gz"
-# Trimming (upstream: trimming.activate). The fastp rule runs only when
-# activated; deactivating breaks star_align in this port (upstream rewires
-# star_align to the raw reads — not ported).
+# Trimming (upstream: trimming.activate). With trimming off, the port's
+# star_align_raw / star_align_se_raw variants feed the raw reads to STAR,
+# mirroring the upstream rewiring (get_fq with trimming.activate = False).
 trimming_activate = true
+# Single-end mode (upstream decides per sample from the units.tsv fq2/sra
+# columns; the port applies it globally — engine rules have fixed input
+# arities). Single-end units provide only <unit-key>_R1.fastq.gz. Default
+# false = the paired-end path.
+single_end = false
 # fastp adapter args and extra args (upstream: per-unit columns
 # fastp_adapters / fastp_extra; the port uses the upstream defaults).
+# fastp_adapters_se matches the upstream single-end default ("").
 fastp_adapters = "--detect_adapter_for_pe"
+fastp_adapters_se = ""
 fastp_extra = "--trim_poly_x --poly_x_min_len 7 --trim_poly_g --poly_g_min_len 7"
+# SRA accessions to download with fasterq-dump (upstream get_sra branch:
+# units whose fq1/fq2 are empty carry an sra accession). Comma-joined list
+# of accessions; reads land in sra/{accession}_1.fastq / _2.fastq (upstream
+# naming). Default empty = no SRA download. Downloaded reads are NOT
+# auto-fed into trimming/alignment (the engine cannot bind per-unit
+# inputs) — place them per the raw_dir naming convention to use them.
+sra_accessions = ""
+# Activate the BWA index / samtools faidx rules. Upstream declares both but
+# its default path never requests them (snakemake lazy evaluation); oxo-flow
+# runs every rule in the file, so both are gated off unless activated.
+bwa_index_activate = false
+genome_faidx_activate = false
 # PCA (upstream: pca.activate / pca.labels). pca_variables is the derived
 # upstream list (variables_of_interest + batch_effects + labels), kept
 # explicit here — keep it in sync with the diffexp keys below.
@@ -91,6 +116,13 @@ diffexp_model = ""
 contrasts = "treatment_1"
 contrast_variables = "treatment_1"
 contrast_levels = "treated"
+# String-form DESeq2 contrasts (upstream diffexp.contrasts string entries,
+# e.g. 'list(c("treatment_1_treated_vs_untreated", ...))'). Semicolon-joined
+# list parallel to `contrasts`; an empty entry = list-form for that
+# contrast. Entries are R expressions evaluated by DESeq2: use single
+# quotes for R strings (the value is double-quoted on the shell command
+# line) and no semicolons inside an entry.
+contrast_exprs = ""
 # STAR extra params (upstream: params.star.index / params.star.align).
 star_index_extra = ""
 star_align_extra = ""
@@ -168,14 +200,65 @@ threads = 4
 [rules.environment]
 conda = "envs/star.yaml"
 
+[[rules]]
+name = "bwa_index"
+description = "Build the BWA index of the reference genome (upstream bwa_index, v7.2.0 bio/bwa/index wrapper: -b block size = size/10 MB clamped to [10, 51200])"
+when = "config.bwa_index_activate"
+input = ["resources/genome.fasta"]
+output = [
+    "resources/genome.fasta.amb",
+    "resources/genome.fasta.ann",
+    "resources/genome.fasta.bwt",
+    "resources/genome.fasta.pac",
+    "resources/genome.fasta.sa",
+]
+shell = """
+mkdir -p logs
+size=$(wc -c < resources/genome.fasta)
+bs=$((size / 1048576 / 10))
+if [ "$bs" -lt 10 ]; then bs=10; fi
+if [ "$bs" -gt 51200 ]; then bs=51200; fi
+(bwa index -b "$bs"M -p resources/genome.fasta resources/genome.fasta) >> logs/bwa_index.log 2>&1
+"""
+[rules.environment]
+conda = "envs/bwa.yaml"
+
+[[rules]]
+name = "genome_faidx"
+description = "Index the reference FASTA with samtools faidx (upstream genome_faidx, v7.2.0 bio/samtools/faidx wrapper)"
+when = "config.genome_faidx_activate"
+input = ["resources/genome.fasta"]
+output = ["resources/genome.fasta.fai"]
+shell = """
+mkdir -p logs
+(samtools faidx {input[0]}) >> logs/genome-faidx.log 2>&1
+"""
+[rules.environment]
+conda = "envs/samtools.yaml"
+
 # ---------------------------------------------------------------------------
-# Trimming (fastp)
+# SRA download + trimming (fastp)
 # ---------------------------------------------------------------------------
+
+[[rules]]
+name = "get_sra"
+description = "Download SRA-accession reads with fasterq-dump (upstream get_sra, v7.2.0 bio/sra-tools/fasterq-dump wrapper with -x)"
+when = "config.sra_accessions != ''"
+scatter = { variable = "accession", values_from = "config.sra_accessions" }
+output = ["sra/{accession}_1.fastq", "sra/{accession}_2.fastq"]
+shell = """
+mkdir -p logs/get-sra sra
+tmp=$(mktemp -d)
+(fasterq-dump --temp "$tmp" --threads {threads} -x --outdir sra {accession}) >> logs/get-sra/{accession}.log 2>&1
+rm -rf "$tmp"
+"""
+[rules.environment]
+conda = "envs/sratools.yaml"
 
 [[rules]]
 name = "fastp_pe"
 description = "Trim adapters and poly-X tails with fastp, paired-end (upstream fastp_pe, fastp wrapper)"
-when = "config.trimming_activate"
+when = "config.trimming_activate && !config.single_end"
 input = ["{config.raw_dir}/{sample}_R1.fastq.gz", "{config.raw_dir}/{sample}_R2.fastq.gz"]
 output = [
     "results/trimmed/{sample}/{sample}_R1.fastq.gz",
@@ -195,13 +278,40 @@ threads = 8
 [rules.environment]
 conda = "envs/fastp.yaml"
 
+[[rules]]
+name = "fastp_se"
+description = "Trim adapters and poly-X tails with fastp, single-end (upstream fastp_se, fastp wrapper)"
+when = "config.trimming_activate && config.single_end"
+input = ["{config.raw_dir}/{sample}_R1.fastq.gz"]
+output = [
+    "results/trimmed/{sample}/{sample}_single.fastq.gz",
+    "results/trimmed/{sample}/{sample}_single.failed.fastq.gz",
+    "results/trimmed/{sample}/{sample}_single.html",
+    "results/trimmed/{sample}/{sample}_single.json",
+]
+shell = """
+mkdir -p logs/trimmed
+(fastp --thread {threads} {config.fastp_extra} {config.fastp_adapters_se} --in1 {input[0]} --out1 {output[0]} --failed_out {output[1]} --json {output[3]} --html {output[2]}) >> logs/trimmed/{sample}.log 2>&1
+"""
+[rules.resources]
+threads = 4
+[rules.environment]
+conda = "envs/fastp.yaml"
+
 # ---------------------------------------------------------------------------
 # Alignment (STAR)
 # ---------------------------------------------------------------------------
 
+# The upstream single star_align rule feeds either trimmed or raw reads,
+# single- or paired-end, depending on trimming.activate and the per-sample
+# unit sheet (get_fq). Engine rules have fixed input patterns, so the port
+# makes the four combinations explicit, each gated by the config flags —
+# exactly one variant is active for any config, and consumers of
+# results/star/{sample}/* wire to it.
 [[rules]]
 name = "star_align"
-description = "Align reads with STAR, output sorted BAM plus gene counts (upstream star_align, star/align wrapper)"
+description = "Align reads with STAR, output sorted BAM plus gene counts (upstream star_align, star/align wrapper); paired-end trimmed reads"
+when = "!config.single_end && config.trimming_activate"
 input = [
     "resources/star_genome",
     "resources/genome.gtf",
@@ -222,6 +332,94 @@ mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
 # declared output empty; rseqc died on 'file does not contain
 # alignment data')
 STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} {input[3]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
+cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
+cat .oxo-flow/tmp/star_align_{sample}/SJ.out.tab > {output[3]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.out > {output[2]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.final.out > {output[4]}
+"""
+[rules.resources]
+threads = 24
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_raw"
+description = "STAR alignment from raw paired-end reads (upstream star_align with trimming.activate = False — the rewired get_fq feeds raw reads)"
+when = "!config.single_end && !config.trimming_activate"
+input = [
+    "resources/star_genome",
+    "resources/genome.gtf",
+    "{config.raw_dir}/{sample}_R1.fastq.gz",
+    "{config.raw_dir}/{sample}_R2.fastq.gz",
+]
+output = [
+    "results/star/{sample}/Aligned.sortedByCoord.out.bam",
+    "results/star/{sample}/ReadsPerGene.out.tab",
+    "results/star/{sample}/Log.out",
+    "results/star/{sample}/SJ.out.tab",
+    "results/star/{sample}/Log.final.out",
+]
+shell = """
+mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
+STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} {input[3]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
+cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
+cat .oxo-flow/tmp/star_align_{sample}/SJ.out.tab > {output[3]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.out > {output[2]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.final.out > {output[4]}
+"""
+[rules.resources]
+threads = 24
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_se"
+description = "STAR alignment of single-end trimmed reads (upstream star_align with a single-end sample — one --readFilesIn)"
+when = "config.single_end && config.trimming_activate"
+input = [
+    "resources/star_genome",
+    "resources/genome.gtf",
+    "results/trimmed/{sample}/{sample}_single.fastq.gz",
+]
+output = [
+    "results/star/{sample}/Aligned.sortedByCoord.out.bam",
+    "results/star/{sample}/ReadsPerGene.out.tab",
+    "results/star/{sample}/Log.out",
+    "results/star/{sample}/SJ.out.tab",
+    "results/star/{sample}/Log.final.out",
+]
+shell = """
+mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
+STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
+cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
+cat .oxo-flow/tmp/star_align_{sample}/SJ.out.tab > {output[3]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.out > {output[2]}
+cat .oxo-flow/tmp/star_align_{sample}/Log.final.out > {output[4]}
+"""
+[rules.resources]
+threads = 24
+[rules.environment]
+conda = "envs/star.yaml"
+
+[[rules]]
+name = "star_align_se_raw"
+description = "STAR alignment of single-end raw reads (upstream star_align with a single-end sample and trimming.activate = False)"
+when = "config.single_end && !config.trimming_activate"
+input = [
+    "resources/star_genome",
+    "resources/genome.gtf",
+    "{config.raw_dir}/{sample}_R1.fastq.gz",
+]
+output = [
+    "results/star/{sample}/Aligned.sortedByCoord.out.bam",
+    "results/star/{sample}/ReadsPerGene.out.tab",
+    "results/star/{sample}/Log.out",
+    "results/star/{sample}/SJ.out.tab",
+    "results/star/{sample}/Log.final.out",
+]
+shell = """
+mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
+STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
 cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
 cat .oxo-flow/tmp/star_align_{sample}/SJ.out.tab > {output[3]}
 cat .oxo-flow/tmp/star_align_{sample}/Log.out > {output[2]}
@@ -434,11 +632,11 @@ conda = "envs/deseq2.yaml"
 
 [[rules]]
 name = "deseq2"
-description = "DESeq2 results for one contrast with ashr shrinkage + MA plot (upstream deseq2, deseq2.R)"
+description = "DESeq2 results for one contrast with ashr shrinkage + MA plot (upstream deseq2, deseq2.R; list-form and string-form contrasts)"
 scatter = { variable = "contrast", values_from = "config.contrasts" }
 input = ["results/deseq2/all.rds"]
 output = ["results/diffexp/{contrast}.diffexp.tsv", "results/diffexp/{contrast}.ma-plot.svg"]
-script = "scripts/deseq2.R {input[0]} {output[0]} {output[1]} {config.diffexp_variables} {config.diffexp_base_levels} {config.contrast_variables} {config.contrast_levels} {threads} logs/deseq2/{contrast}.diffexp.log"
+script = "scripts/deseq2.R {input[0]} {output[0]} {output[1]} {config.diffexp_variables} {config.diffexp_base_levels} {config.contrast_variables} {config.contrast_levels} \"{config.contrast_exprs}\" {config.contrasts} {contrast} {threads} logs/deseq2/{contrast}.diffexp.log"
 [rules.resources]
 threads = 1
 [rules.environment]
