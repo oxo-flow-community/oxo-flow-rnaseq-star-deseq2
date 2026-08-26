@@ -192,6 +192,7 @@ input = ["resources/genome.fasta", "resources/genome.gtf"]
 # and star_align died with STAR's FATAL ERROR).
 output = ["resources/star_genome/genomeParameters.txt"]
 shell = """
+rm -rf .oxo-flow/tmp/star_index
 mkdir -p logs .oxo-flow/tmp/star_index resources/star_genome
 STAR --runThreadN {threads} --runMode genomeGenerate --genomeFastaFiles {input[0]} --sjdbGTFfile {input[1]} {config.star_index_extra} --outTmpDir .oxo-flow/tmp/star_index/STARtmp --genomeDir resources/star_genome >> logs/star_index_genome.log 2>&1
 """
@@ -326,6 +327,7 @@ output = [
     "results/star/{sample}/Log.final.out",
 ]
 shell = """
+rm -rf .oxo-flow/tmp/star_align_{sample}
 mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
 # stdout IS the BAM (--outStd), so the log redirect must not override
 # it (live: '> bam >> log 2>&1' sent the BAM to the log and left the
@@ -360,6 +362,7 @@ output = [
     "results/star/{sample}/Log.final.out",
 ]
 shell = """
+rm -rf .oxo-flow/tmp/star_align_{sample}
 mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
 STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} {input[3]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
 cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
@@ -389,6 +392,7 @@ output = [
     "results/star/{sample}/Log.final.out",
 ]
 shell = """
+rm -rf .oxo-flow/tmp/star_align_{sample}
 mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
 STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
 cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
@@ -418,6 +422,7 @@ output = [
     "results/star/{sample}/Log.final.out",
 ]
 shell = """
+rm -rf .oxo-flow/tmp/star_align_{sample}
 mkdir -p logs/star .oxo-flow/tmp/star_align_{sample}
 STAR --runThreadN {effective_threads} --genomeDir {input[0]} --readFilesIn {input[2]} --readFilesCommand gunzip -c --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --sjdbGTFfile "{input[1]}" {config.star_align_extra} --outTmpDir .oxo-flow/tmp/star_align_{sample}/STARtmp --outFileNamePrefix .oxo-flow/tmp/star_align_{sample}/ --limitBAMsortRAM $(( {effective_memory_mb} * 1000000 )) --outStd BAM_SortedByCoordinate > {output[0]} 2>> logs/star/{sample}.log
 cat .oxo-flow/tmp/star_align_{sample}/ReadsPerGene.out.tab > {output[1]}
