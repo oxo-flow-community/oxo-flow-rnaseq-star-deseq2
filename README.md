@@ -56,11 +56,14 @@ cd oxo-flow-rnaseq-star-deseq2
 - **Tools** — conda environments, all exact-pinned (`envs/*.yaml`): STAR
   2.7.11b, fastp 1.0.1, RSeQC 5.0.4, gffutils 0.13, pandas 2.3.2, MultiQC
   1.29, DESeq2 1.46.0 (r-stringr 1.5.1, r-ashr 2.2_63), biomaRt 2.62.0
-  (r-tidyverse 2.0.0, r-dbplyr 2.5.0). Requires conda/mamba to create them;
-  reference download uses system `curl`.
-- **Compute** — up to 24 CPUs per rule (`star_align`); 8 for `fastp_pe`, 4
-  for `star_index`, 1 elsewhere. No per-rule memory limits are configured in
-  the workflow; budget RAM for STAR indexing and alignment of human data.
+  (r-tidyverse 2.0.0, r-dbplyr 2.5.0), sra-tools 3.2.1, bwa 0.7.19, samtools
+  1.22. Requires conda/mamba to create them; reference download uses system
+  `curl`.
+- **Compute** — up to 24 CPUs per rule (`star_align` and its
+  `star_align_raw`/`star_align_se`/`star_align_se_raw` variants); 8 for
+  `fastp_pe`; 4 for `fastp_se` and `star_index`; 1 elsewhere. No per-rule
+  memory limits are configured in the workflow; budget RAM for STAR indexing
+  and alignment of human data.
 - **Disk** — several tens of GB: the GRCh38 STAR index
   (`resources/star_genome`) is ~30 GB, plus BAMs, trimmed reads and conda
   envs.
@@ -145,7 +148,7 @@ notes per row); they appear as `skip` in the default dry-run plan.
 | count_matrix | `count_matrix` | pandas 2.3.2 | count-matrix.py logic identical (strandedness column pick 1/2/3, sample naming, `groupby(...).sum()` collapse of technical replicates); unit→(sample, strandedness) mapping read from `config/units.tsv` instead of snakemake params |
 | gene_2_symbol | `gene_2_symbol_counts` / `gene_2_symbol_normcounts` / `gene_2_symbol_diffexp` | biomaRt 2.62.0, r-tidyverse 2.0.0 | upstream is one wildcard-generic rule over `{prefix}`; the port makes the three call sites explicit (oxo-flow has no arbitrary `{prefix}` wildcard). `{contrast}` variant scatters per contrast |
 | deseq2_init | `deseq2_init` | DESeq2 1.46.0 | deseq2-init.R logic identical (relevel base levels, batch-effect factors, default interaction model, `rowSums>1` filter, normalized counts); config values passed as CLI args |
-| pca | `pca` | DESeq2 1.46.0 | plot-pca.R verbatim (`rlog(blind=FALSE)`, `plotPCA(intgroup=variable)`); one instance per `pca_variables` entry; gated by `pca_activate` |
+| pca | `pca_treatment_1` / `pca_treatment_2` / `pca_jointly_handled` | DESeq2 1.46.0 | plot-pca.R verbatim (`rlog(blind=FALSE)`, `plotPCA(intgroup=variable)`); one explicit rule per `pca_variables` entry (the engine's scatter does not substitute `{variable}` inside the script field), gated by `pca_activate` |
 | deseq2 | `deseq2` | DESeq2 1.46.0, r-ashr 2.2_63 | deseq2.R logic identical (list-form contrast = vof + level + base_level, ashr `lfcShrink`, `order(padj)`, MA plot); string-form contrasts ported via `contrast_exprs` (semicolon-joined R expressions parallel to `contrasts`, e.g. `list(c('a_vs_b', ...))`, evaluated `eval(parse(text = ...))` verbatim like upstream; entries must use single-quoted R strings and no semicolons); one instance per `contrasts` entry |
 | bwa_index | `bwa_index` | bwa 0.7.19 | bwa/index wrapper verbatim: `-b <size/10 MB, clamped to [10, 51200]>M -p resources/genome.fasta` (the wrapper's block-size formula, replicated with `wc -c` + shell arithmetic), outputs `resources/genome.fasta.{amb,ann,bwt,pac,sa}`; gated on `bwa_index_activate` (default off — upstream `rule all` never requests it; snakemake lazy evaluation vs oxo-flow runs every rule) |
 | genome_faidx | `genome_faidx` | samtools 1.22 | `samtools faidx` wrapper verbatim → `resources/genome.fasta.fai`; gated on `genome_faidx_activate` (same reasoning as bwa_index) |
@@ -162,12 +165,14 @@ byte-identical to upstream (`results/trimmed/A-lane1/A-lane1_R1.fastq.gz`,
 `results/star/A-lane1/...`). Nested upstream config (`diffexp.*`, `ref.*`,
 `trimming.activate`, `pca.*`) is flattened into flat `[config]` keys with the
 same defaults (see `main.oxoflow` header). The upstream `config/samples.tsv`
-demo sheet (samples A–E) and `config/units.tsv` (6 units) ship with the port;
-raw reads live at `<raw_dir>/<unit-key>_R1.fastq.gz` / `_R2.fastq.gz`
-(`[config] raw_dir` defaults to `test/fixtures/raw/`, which contains tiny real
-reads so the dry-run resolves every input; point it at your data, e.g.
-`raw_dir = "raw"`). Upstream demo-data FASTQ paths (`A.1.fq.gz` etc.) were
-renamed to this convention — data-path substitution only.
+demo sheet ships with the port, extended with replicate units F/G/H so every
+treatment combination has ≥2 samples (a DESeq2 run requirement): 8 samples
+(A–H), 9 units (A-lane1, A-lane2, B–H lane1). Raw reads live at
+`<raw_dir>/<unit-key>_R1.fastq.gz` / `_R2.fastq.gz` (`[config] raw_dir`
+defaults to `test/fixtures/raw/`, which contains tiny real reads so the
+dry-run resolves every input; point it at your data, e.g. `raw_dir = "raw"`).
+Upstream demo-data FASTQ paths (`A.1.fq.gz` etc.) were renamed to this
+convention — data-path substitution only.
 
 ## Test
 
