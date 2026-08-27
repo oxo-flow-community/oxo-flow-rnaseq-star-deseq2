@@ -1,11 +1,11 @@
-sample_name	unit_name	fq1	fq2	sra	fastp_adapters	fastp_extra	strandedness
-A	lane1	raw/A-lane1_R1.fastq.gz	raw/A-lane1_R2.fastq.gz				yes
-A	lane2	raw/A-lane2_R1.fastq.gz	raw/A-lane2_R2.fastq.gz				yes
-B	lane1	raw/B-lane1_R1.fastq.gz	raw/B-lane1_R2.fastq.gz				none
-C	lane1	raw/C-lane1_R1.fastq.gz	raw/C-lane1_R2.fastq.gz				none
-D	lane1	raw/D-lane1_R1.fastq.gz	raw/D-lane1_R2.fastq.gz				reverse
-E	lane1	raw/E-lane1_R1.fastq.gz	raw/E-lane1_R2.fastq.gz				reverse
+unit_key	sample_name	unit_name	fq1	fq2	sra	fastp_adapters	fastp_extra	strandedness
+A-lane1	A	lane1	raw/A-lane1_R1.fastq.gz	raw/A-lane1_R2.fastq.gz				yes
+A-lane2	A	lane2	raw/A-lane2_R1.fastq.gz	raw/A-lane2_R2.fastq.gz				yes
+B-lane1	B	lane1	raw/B-lane1_R1.fastq.gz	raw/B-lane1_R2.fastq.gz				none
+C-lane1	C	lane1	raw/C-lane1_R1.fastq.gz	raw/C-lane1_R2.fastq.gz				none
+D-lane1	D	lane1	raw/D-lane1_R1.fastq.gz	raw/D-lane1_R2.fastq.gz				reverse
+E-lane1	E	lane1	raw/E-lane1_R1.fastq.gz	raw/E-lane1_R2.fastq.gz				reverse
 
-F	lane1	raw/F-lane1_R1.fastq.gz	raw/F-lane1_R2.fastq.gz				yes
-G	lane1	raw/G-lane1_R1.fastq.gz	raw/G-lane1_R2.fastq.gz				yes
-H	lane1	raw/H-lane1_R1.fastq.gz	raw/H-lane1_R2.fastq.gz				reverse
+F-lane1	F	lane1	raw/F-lane1_R1.fastq.gz	raw/F-lane1_R2.fastq.gz				yes
+G-lane1	G	lane1	raw/G-lane1_R1.fastq.gz	raw/G-lane1_R2.fastq.gz				yes
+H-lane1	H	lane1	raw/H-lane1_R1.fastq.gz	raw/H-lane1_R2.fastq.gz				reverse
