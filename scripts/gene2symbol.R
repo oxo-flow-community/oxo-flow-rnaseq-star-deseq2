@@ -1,7 +1,11 @@
 #!/usr/bin/env Rscript
 # Annotate Ensembl gene ids with gene symbols via biomaRt (with mirror
 # fallback). Port of gene2symbol.R from snakemake-workflows/rna-seq-star-
-# deseq2 (v3.1.1) with identical logic.
+# deseq2 (v3.1.1) with ONE deliberate deviation: the "uswest" mirror hop
+# is dropped (issue #7). biomaRt 2.62 (envs/biomart.yaml pin) validates
+# mirrors against [www, useast, asia] and rejects "uswest" with an
+# "Invalid mirror" warning, so every retry round wasted one
+# guaranteed-fail attempt. Chain: useast -> asia -> www.
 #
 # Usage: gene2symbol.R <input.tsv> <output.tsv> <species> <log>
 #   species: biomaRt dataset suffix, e.g. "hsapiens" (upstream
@@ -47,7 +51,7 @@ while ( class(mart)[[1]] != "Mart" ) {
       if (rounds >= 3) {
         cli_abort(
           str_c(
-            "Have tried all 4 available Ensembl biomaRt mirrors ",
+            "Have tried all 3 available Ensembl biomaRt mirrors ",
             rounds,
             " times. You might have a connection problem, or no mirror is responsive.\n",
             "The last error message was:\n",
@@ -57,8 +61,7 @@ while ( class(mart)[[1]] != "Mart" ) {
       }
       # hop to next mirror
       mart <- switch(mart,
-                     useast = "uswest",
-                     uswest = "asia",
+                     useast = "asia",
                      asia = "www",
                      www = {
                        # wait before starting another round through the mirrors,
