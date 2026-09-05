@@ -56,7 +56,7 @@
     "star_index"
   ],
   "excluded": [
-    "Snakemake report artifacts (workflow/report/*.rst) — jinja captions rendered by the sphinx-based snakemake --report machinery (report: directive + report() output annotations); no oxo-flow equivalent"
+    "Snakemake report artifacts — per-rule .rst captions (workflow/report/fastp.rst, pca.rst, diffexp.rst, ma.rst) ported as report = \"…\" annotations on the 6 report()-wrapped rules (fastp_pe, fastp_se, 3x pca, deseq2), rendered by the engine rule-captions report section (needs oxo-flow >= 0.17.0; older engines ignore the key); the workflow-level report: directive (workflow/report/workflow.rst) and the sphinx-based snakemake --report HTML book (self-contained, figures embedded, categories/subcategories/labels) have no oxo-flow equivalent"
   ],
   "rule_count": 31,
   "tools": [
@@ -79,7 +79,7 @@
   ],
   "description": "End-to-end RNA-seq differential-expression analysis with STAR and DESeq2: Ensembl reference download, fastp trimming, STAR alignment with gene counts, RSeQC QC + MultiQC, count matrix with technical-replicate collapse, Ensembl biomaRt gene-symbol annotation, and DESeq2 (normalized counts, PCA plots, per-contrast results with ashr shrinkage and MA plots). Every tool is pinned to an exact conda version for reproducibility. Per-unit upstream semantics are ported via the engine metadata binding: the units sheet doubles as the metadata table, so per-unit fastp_adapters/fastp_extra overrides and per-unit SRA accessions (the get_sra auto-feed) resolve per unit with the global config as fallback. Non-default upstream branches are config-gated and off by default: SRA download (get_sra), single-end mode (fastp_se + star_align_se), raw-read alignment (trimming_activate = false), bwa index and samtools faidx.",
   "installation": {
-    "engine": "oxo-flow >= 0.12.0 (per-unit metadata features — per-unit fastp_adapters/fastp_extra lookup and the SRA auto-feed — require >= 0.17.0; on older engines the global config defaults apply)",
+    "engine": "oxo-flow >= 0.12.0 (per-unit metadata features — per-unit fastp_adapters/fastp_extra lookup and the SRA auto-feed — and the report = caption annotations require >= 0.17.0; on older engines the global config defaults apply and report annotations are ignored)",
     "toolchain": "conda envs — pinned",
     "requirements": [
       "paired-end FASTQ reads per config/units.tsv (raw/<unit-key>_R1.fastq.gz / _R2.fastq.gz) and sample conditions in config/samples.tsv",

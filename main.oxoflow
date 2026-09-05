@@ -47,8 +47,12 @@
 # defaults apply), and get_sra reads {meta.sra} per unit, downloading into
 # the raw_dir naming convention so trimming/alignment consume the reads
 # automatically (upstream get_units_fastqs).
-# Not ported (see README fidelity table): the Snakemake report (.rst files,
-# sphinx-based --report machinery).
+# Caption half ported: fastp_pe/fastp_se/pca_*/deseq2 carry `report = "…"`
+# annotations (upstream workflow/report/*.rst captions; engine 0.17.0+
+# rule-captions section; older engines ignore the key). Not ported (see
+# README fidelity table): the workflow-level `report:` directive and the
+# sphinx-based `snakemake --report` HTML book (figures embedded,
+# categories/subcategories/labels).
 
 [workflow]
 name = "oxo-flow-rnaseq-star-deseq2"
@@ -289,6 +293,7 @@ conda = "envs/sratools.yaml"
 [[rules]]
 name = "fastp_pe"
 description = "Trim adapters and poly-X tails with fastp, paired-end (upstream fastp_pe, fastp wrapper); per-unit adapters/extra from the units sheet ({meta.fastp_adapters}/{meta.fastp_extra}), global config values as the per-unit defaults"
+report = "fastp report of read trimming (upstream workflow/report/fastp.rst). Upstream renders one report entry per sample-unit combination; here the {sample} wildcard is the composite <sample>-<unit> key from the units sheet."
 when = "config.trimming_activate && !config.single_end"
 input = ["{config.raw_dir}/{sample}_R1.fastq.gz", "{config.raw_dir}/{sample}_R2.fastq.gz"]
 output = [
@@ -320,6 +325,7 @@ conda = "envs/fastp.yaml"
 [[rules]]
 name = "fastp_se"
 description = "Trim adapters and poly-X tails with fastp, single-end (upstream fastp_se, fastp wrapper); per-unit adapters/extra from the units sheet ({meta.fastp_adapters}/{meta.fastp_extra}), global config values as the per-unit defaults"
+report = "fastp report of read trimming (upstream workflow/report/fastp.rst). Upstream renders one report entry per sample-unit combination; here the {sample} wildcard is the composite <sample>-<unit> key from the units sheet."
 when = "config.trimming_activate && config.single_end"
 input = ["{config.raw_dir}/{sample}_R1.fastq.gz"]
 output = [
@@ -684,6 +690,7 @@ conda = "envs/deseq2.yaml"
 [[rules]]
 name = "deseq2"
 description = "DESeq2 results for one contrast with ashr shrinkage + MA plot (upstream deseq2, deseq2.R; list-form and string-form contrasts)"
+report = "Table of differential expression results per gene calculated with DESeq2; MA plot of log fold change vs. mean of normalized counts for each gene (upstream workflow/report/diffexp.rst + ma.rst, one rule instance per contrast)."
 scatter = { variable = "contrast", values_from = "config.contrasts" }
 input = ["results/deseq2/all.rds"]
 output = ["results/diffexp/{contrast}.diffexp.tsv", "results/diffexp/{contrast}.ma-plot.svg"]
@@ -696,6 +703,7 @@ conda = "envs/deseq2.yaml"
 [[rules]]
 name = "pca_treatment_1"
 description = "PCA plot of rlog-transformed counts per variable of interest (upstream pca, plot-pca.R). One rule per pca_variables entry — the engine's scatter does not substitute {variable} inside the script field (live: plotPCA got the literal string as intgroup)."
+report = "Principal component analysis over the normalized counts of all genes (upstream workflow/report/pca.rst)."
 when = "config.pca_activate"
 input = ["results/deseq2/all.rds"]
 output = ["results/pca.treatment_1.svg"]
@@ -706,6 +714,7 @@ conda = "envs/deseq2.yaml"
 [[rules]]
 name = "pca_treatment_2"
 description = "PCA plot for the treatment_2 variable (see pca_treatment_1)"
+report = "Principal component analysis over the normalized counts of all genes (upstream workflow/report/pca.rst)."
 when = "config.pca_activate"
 input = ["results/deseq2/all.rds"]
 output = ["results/pca.treatment_2.svg"]
@@ -716,6 +725,7 @@ conda = "envs/deseq2.yaml"
 [[rules]]
 name = "pca_jointly_handled"
 description = "PCA plot for the jointly_handled batch effect (see pca_treatment_1)"
+report = "Principal component analysis over the normalized counts of all genes (upstream workflow/report/pca.rst)."
 when = "config.pca_activate"
 input = ["results/deseq2/all.rds"]
 output = ["results/pca.jointly_handled.svg"]
