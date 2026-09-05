@@ -23,7 +23,9 @@ reproducible run after run.
 Requires **oxo-flow >= 0.12.0**; the per-unit metadata features (per-unit
 `fastp_adapters`/`fastp_extra` lookup and the SRA auto-feed) need
 **oxo-flow >= 0.17.0** (the `{meta.*}` binding) — on older engines the
-global config defaults apply. Release binary (recommended):
+global config defaults apply. The `report = "…"` caption annotations also
+need **>= 0.17.0** (the rule-captions report section) and are ignored by
+older engines. Release binary (recommended):
 
 ```bash
 curl -fL -o oxo-flow.tar.gz \
@@ -162,7 +164,7 @@ notes per row); they appear as `skip` in the default dry-run plan.
 | deseq2 | `deseq2` | DESeq2 1.46.0, r-ashr 2.2_63 | deseq2.R logic identical (list-form contrast = vof + level + base_level, ashr `lfcShrink`, `order(padj)`, MA plot); string-form contrasts ported via `contrast_exprs` (semicolon-joined R expressions parallel to `contrasts`, e.g. `list(c('a_vs_b', ...))`, evaluated `eval(parse(text = ...))` verbatim like upstream; entries must use single-quoted R strings and no semicolons); one instance per `contrasts` entry |
 | bwa_index | `bwa_index` | bwa 0.7.19 | bwa/index wrapper verbatim: `-b <size/10 MB, clamped to [10, 51200]>M -p resources/genome.fasta` (the wrapper's block-size formula, replicated with `wc -c` + shell arithmetic), outputs `resources/genome.fasta.{amb,ann,bwt,pac,sa}`; gated on `bwa_index_activate` (default off — upstream `rule all` never requests it; snakemake lazy evaluation vs oxo-flow runs every rule) |
 | genome_faidx | `genome_faidx` | samtools 1.22 | `samtools faidx` wrapper verbatim → `resources/genome.fasta.fai`; gated on `genome_faidx_activate` (same reasoning as bwa_index) |
-| report/ (`report/*.rst`) | not ported | — | Snakemake report artifacts: the `.rst` captions are jinja templates rendered by the sphinx-based `snakemake --report` machinery (`report:` directive + `report()` output annotations); no oxo-flow equivalent |
+| report/ (`report/*.rst`) | captions ported | `report = "…"` | The per-rule `.rst` captions (fastp, pca, diffexp, ma) are ported as static `report` annotations on the 6 report()-wrapped rules (`fastp_pe`, `fastp_se`, the 3 PCA rules, `deseq2`), rendered by the engine's rule-captions report section (oxo-flow >= 0.17.0; older engines ignore the key; upstream jinja wildcards cannot be interpolated, so the fastp caption notes the composite `{sample}` = `<sample>-<unit>` in words). The workflow-level `report:` directive (`workflow.rst`) and the sphinx-based `snakemake --report` HTML book (self-contained, figures embedded, categories/subcategories/labels) are not ported |
 | trimming.activate = False rewiring | `star_align_raw` / `star_align_se_raw` | STAR 2.7.11b | upstream then feeds raw reads to star_align; ported as explicit variants gated on `!trimming_activate` |
 | edger / kallisto / trimgalore | n/a | — | not present in upstream v3.1.1 (fastp is the trimmer, DESeq2 the DE tool) |
 
