@@ -55,9 +55,7 @@
     "star_align_se_raw",
     "star_index"
   ],
-  "excluded": [
-    "Snakemake report artifacts — per-rule .rst captions (workflow/report/fastp.rst, pca.rst, diffexp.rst, ma.rst) ported as report = \"…\" annotations on the 6 report()-wrapped rules (fastp_pe, fastp_se, 3x pca, deseq2), rendered by the engine rule-captions report section (needs oxo-flow >= 0.17.0; older engines ignore the key); the workflow-level report: directive (workflow/report/workflow.rst) and the sphinx-based snakemake --report HTML book (self-contained, figures embedded, categories/subcategories/labels) have no oxo-flow equivalent"
-  ],
+  "excluded": [],
   "rule_count": 31,
   "tools": [
     "star",
@@ -90,5 +88,8 @@
   },
   "repo_url": "https://github.com/oxo-flow-community/oxo-flow-rnaseq-star-deseq2",
   "license": "Apache-2.0",
-  "upstream_license": "MIT"
+  "upstream_license": "MIT",
+  "not_applicable": [
+    "Snakemake report artifacts — the per-rule caption half IS ported: fastp_pe/fastp_se/pca_*/deseq2 carry `report = \"…\"` annotations (engine 0.17.0+, rendered by the engine's rule-captions report section), translating the StaticText content of upstream workflow/report/fastp.rst, pca.rst, diffexp.rst. The remaining machinery (workflow-level `report:` directive, snakemake --report sphinx HTML book with figures embedded) is Snakemake-specific reporting infrastructure, not analysis logic — covered by the engine-native report (`oxo-flow report`, html/md/pdf) which renders execution state and rule captions natively."
+  ]
 }
