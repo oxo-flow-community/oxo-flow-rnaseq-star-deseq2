@@ -14,7 +14,7 @@ echo "==> lint (warnings are acceptable, errors are not)"
 
 echo "==> dry-run with default config"
 "$OXO" dry-run main.oxoflow --samples first:1 > /tmp/oxo-dryrun-$$.txt 2>&1
-grep -q "would execute" /tmp/oxo-dryrun-$$.txt
+grep -Eq "would execute|To execute:" /tmp/oxo-dryrun-$$.txt
 
 echo "==> debug: expanded commands contain no literal {wildcards}"
 "$OXO" debug main.oxoflow | grep -q '{sample}' && { echo "unexpanded wildcards in debug output"; exit 1; } || true
