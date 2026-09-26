@@ -183,16 +183,27 @@ name = "get_genome"
 description = "Download the Ensembl reference genome FASTA (upstream get_genome, ensembl-sequence wrapper: primary assembly with toplevel fallback)"
 input = ["{config.genome_fasta}"]
 output = ["resources/genome.fasta"]
+# Download branch is a resumable retry loop, not a bare `curl | gzip`:
+# a single-attempt pipe dies the moment any transient timeout hits (live:
+# server ~/.curlrc --max-time 300 + a ~27KB/s route to ftp.ensembl.org
+# truncated the 99MB GTF at 62MB / would need ~9h for the 841MB genome),
+# and restart from scratch. `-C -` resumes the partial file across
+# retries, so long downloads converge instead of losing all progress.
 shell = """
 mkdir -p logs resources
 if [ -n "{config.genome_fasta}" ]; then
     cp "{config.genome_fasta}" resources/genome.fasta
 else
-    (if curl -fL --head {config.genome_url} >/dev/null 2>&1; then
-        curl -L {config.genome_url} | gzip -d >> resources/genome.fasta
-    else
-        curl -L {config.genome_url_toplevel} | gzip -d >> resources/genome.fasta
-    fi) >> logs/get-genome.log 2>&1
+    probe=$(curl -fsIL --connect-timeout 30 --max-time 60 {config.genome_url} >/dev/null 2>&1 && echo ok || echo fail)
+    if [ "$probe" = "ok" ]; then url={config.genome_url}; else url={config.genome_url_toplevel}; fi
+    (
+        for i in $(seq 1 40); do
+            curl -fL -C - --connect-timeout 30 -o resources/genome.fasta.part "$url" && break
+            echo "retry $i: curl failed, resuming" >&2; sleep 5
+        done
+        gzip -dc resources/genome.fasta.part > resources/genome.fasta
+        rm -f resources/genome.fasta.part
+    ) >> logs/get-genome.log 2>&1
 fi
 """
 
@@ -211,7 +222,14 @@ mkdir -p logs resources
 if [ -n "{config.annotation_gtf}" ]; then
     cp "{config.annotation_gtf}" resources/genome.gtf
 else
-    (curl -L {config.annotation_url} | gzip -d > resources/genome.gtf) >> logs/get_annotation.log 2>&1
+    (
+        for i in $(seq 1 40); do
+            curl -fL -C - --connect-timeout 30 -o resources/genome.gtf.part "{config.annotation_url}" && break
+            echo "retry $i: curl failed, resuming" >&2; sleep 5
+        done
+        gzip -dc resources/genome.gtf.part > resources/genome.gtf
+        rm -f resources/genome.gtf.part
+    ) >> logs/get_annotation.log 2>&1
 fi
 """
 
