@@ -527,7 +527,12 @@ input = ["results/star/{sample}/Aligned.sortedByCoord.out.bam", "results/qc/rseq
 output = ["results/qc/rseqc/{sample}.junctionanno.junction.bed", "logs/rseqc/rseqc_junction_annotation/{sample}.log"]
 shell = """
 mkdir -p logs/rseqc/rseqc_junction_annotation
-junction_annotation.py -q 255 -i {input[0]} -r {input[1]} -o results/qc/rseqc/{sample}.junctionanno > logs/rseqc/rseqc_junction_annotation/{sample}.log 2>&1
+junction_annotation.py -q 255 -i {input[0]} -r {input[1]} -o results/qc/rseqc/{sample}.junctionanno > logs/rseqc/rseqc_junction_annotation/{sample}.log 2>&1 || exit $?
+# RSeQC exits 0 but writes no .junction.bed when the BAM has zero splice
+# junctions (live: header-only BAMs with "No splice junction found.
+# total = 0" aborted the workflow on "declared outputs are missing").
+# Zero junctions is a legitimate result, so materialize the empty BED.
+[ -f results/qc/rseqc/{sample}.junctionanno.junction.bed ] || touch results/qc/rseqc/{sample}.junctionanno.junction.bed
 """
 [rules.environment]
 conda = "envs/rseqc.yaml"
