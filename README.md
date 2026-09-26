@@ -179,8 +179,19 @@ demo sheet ships with the port, extended with replicate units F/G/H so every
 treatment combination has ≥2 samples (a DESeq2 run requirement): 8 samples
 (A–H), 9 units (A-lane1, A-lane2, B–H lane1). Raw reads live at
 `<raw_dir>/<unit-key>_R1.fastq.gz` / `_R2.fastq.gz` (`[config] raw_dir`
-defaults to `test/fixtures/raw/`, which contains tiny real reads so the
+defaults to `test/fixtures/raw/`, which contains tiny synthetic reads so the
 dry-run resolves every input; point it at your data, e.g. `raw_dir = "raw"`).
+Note the committed fixtures are random-sequence reads (size only, not
+science): aligned against the real GRCh38 reference they yield ~0% mapping,
+so a full run on the default `raw_dir` will abort at
+`rseqc_junction_annotation` (zero splice junctions — the rule now handles
+this, but the downstream count matrix is still all-zero and DESeq2 has no
+signal). For a tiny end-to-end run WITH real alignment/DE signal, point the
+config at the coherent synthetic kit: `genome_fasta =
+"test/fixtures/reference/genome.fa"`, `annotation_gtf =
+"test/fixtures/reference/genes.gtf"`, `raw_dir =
+"test/fixtures/raw-synthetic"` (40 genes, two treatment levels, reads drawn
+from the transcripts with ~50% spliced pairs).
 Upstream demo-data FASTQ paths (`A.1.fq.gz` etc.) were renamed to this
 convention — data-path substitution only. `config/units.tsv` keeps the
 upstream columns (`sample_name`, `unit_name`, `fq1`, `fq2`, `sra`,
