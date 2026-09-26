@@ -5,11 +5,12 @@ The previous kit was incoherent: the reads did not match the shipped
 genome (live: STAR aligned nothing), and the GTF reused transcript ids
 across loci (live: rseqc_gtf2bed raised 'End of last exon (2000) does
 not match end of feature (500)'). This generator emits all three pieces
-from one seed: a 2500bp contig, a clean 4-gene / 8-transcript GTF
-(unique ids, exons inside transcript bounds), and 6 units x 150 paired
-100bp reads drawn from the transcripts — units A-lane1/A-lane2/B-lane1
-express genes g1/g2, units C/D/E-lane1 express g3/g4, giving DESeq2 a
-real two-condition signal. Half the reads are spliced across two exons
+from one seed: a 320,000bp contig, a clean 400-gene / 800-transcript GTF
+(unique ids, exons inside transcript bounds), and 9 units x 4000 paired
+100bp reads drawn from the transcripts — units A-lane1/A-lane2/B-lane1/
+F-lane1/G-lane1 express genes g201–g400 (untreated), units C/D/E/H-lane1
+express genes g1–g200 (treated), giving DESeq2
+a real two-condition signal. Half the reads are spliced across two exons
 so STAR junction handling is exercised.
 
 Regenerate with:  python3 test/fixtures/generate_fixtures.py
@@ -27,9 +28,9 @@ SEED = 42
 
 COMP = str.maketrans("ACGT", "TGCA")
 
-# gene -> (strand, start, end, [exon (start, end), ...]). 40 genes so
+# gene -> (strand, start, end, [exon (start, end), ...]). 400 genes so
 # DESeq2's dispersion fit has support (live: 4 genes x 8 samples still
-# failed estimateDispersionsFit). 30% have two exons (spliced reads).
+# failed estimateDispersionsFit). 1/3 have two exons (spliced reads).
 GENES = {}
 _cursor = 1
 for _i in range(400):

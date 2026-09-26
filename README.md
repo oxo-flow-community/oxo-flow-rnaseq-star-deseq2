@@ -190,7 +190,8 @@ signal). For a tiny end-to-end run WITH real alignment/DE signal, point the
 config at the coherent synthetic kit: `genome_fasta =
 "test/fixtures/reference/genome.fa"`, `annotation_gtf =
 "test/fixtures/reference/genes.gtf"`, `raw_dir =
-"test/fixtures/raw-synthetic"` (40 genes, two treatment levels, reads drawn
+"test/fixtures/raw-synthetic"` (400 genes on a 320 kb genome, two
+treatment levels — 4000 read pairs per unit across 9 units, reads drawn
 from the transcripts with ~50% spliced pairs).
 Upstream demo-data FASTQ paths (`A.1.fq.gz` etc.) were renamed to this
 convention — data-path substitution only. `config/units.tsv` keeps the
