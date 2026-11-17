@@ -2,7 +2,7 @@ oxo-flow-rnaseq-star-deseq2
 Copyright (c) 2026 oxo-flow-community
 
 This pipeline is a port of snakemake-workflows/rna-seq-star-deseq2
-(https://github.com/snakemake-workflows/rna-seq-star-deseq2), version v3.1.1,
+(https://github.com/snakemake-workflows/rna-seq-star-deseq2), version v3.1.2,
 authored by Johannes Köster and contributors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ Upstream license
 This port is derived from snakemake-workflows/rna-seq-star-deseq2 under the
 MIT license. The upstream LICENSE must be included **verbatim** in this
 repository: fetch it from the upstream repository at the ported commit
-(aa6b17edf3396230165c18709d04cd982bdaaa4c) and place it at LICENSE.upstream.
+(b9617cfe8945b5747a0e93ef3b94833807c844c7) and place it at LICENSE.upstream.
 (Apache-2.0 §4(d): attribution notices from the Source form must be retained.)
 
 Rule command strings and conda pins for `get_sra`, `fastp_se`,
@@ -32,5 +32,5 @@ the snakemake-wrappers repository (https://github.com/snakemake/snakemake-wrappe
 MIT license) version v7.2.0, bio/sra-tools/fasterq-dump, bio/fastp,
 bio/bwa/index, bio/samtools/faidx and bio/star/align. The string-form
 DESeq2 contrast branch in scripts/deseq2.R is the corresponding branch of
-the upstream workflow's scripts/deseq2.R (v3.1.1, MIT).
+the upstream workflow's scripts/deseq2.R (v3.1.2, MIT).
 ---------------------------------------------------------------------

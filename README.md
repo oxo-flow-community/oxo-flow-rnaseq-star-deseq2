@@ -3,11 +3,11 @@
 [![CI](https://github.com/oxo-flow-community/oxo-flow-rnaseq-star-deseq2/actions/workflows/ci.yml/badge.svg)](https://github.com/oxo-flow-community/oxo-flow-rnaseq-star-deseq2/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> ★ Verified · ⇄ Official port of [`snakemake-workflows/rna-seq-star-deseq2`](https://github.com/snakemake-workflows/rna-seq-star-deseq2) @ `v3.1.1` — same tools, same versions, same commands. Part of the [oxo-flow-community catalog](https://oxo-flow-community.github.io/).
+> ★ Verified · ⇄ Official port of [`snakemake-workflows/rna-seq-star-deseq2`](https://github.com/snakemake-workflows/rna-seq-star-deseq2) @ `v3.1.2` — same tools, same versions, same commands. Part of the [oxo-flow-community catalog](https://oxo-flow-community.github.io/).
 
 This workflow takes paired-end RNA-seq reads through the complete
 differential-expression analysis: it downloads the Ensembl reference genome
-and annotation (GRCh38, release 115), builds a STAR index, trims reads with
+and annotation (GRCh38, release 114), builds a STAR index, trims reads with
 fastp, aligns with STAR to produce sorted BAMs and per-gene counts, runs
 RSeQC QC plus a MultiQC report, builds the gene count matrix (collapsing
 technical replicates), annotates gene symbols via Ensembl biomaRt, and runs
@@ -57,7 +57,7 @@ cd oxo-flow-rnaseq-star-deseq2
   `test/fixtures/raw/` so the dry-run resolves every input; point `raw_dir`
   at your own data (e.g. `raw_dir = "raw"` in `main.oxoflow`).
 - **Reference data** — none to download manually: the Ensembl reference
-  genome FASTA and annotation GTF (GRCh38, release 115, configurable via
+  genome FASTA and annotation GTF (GRCh38, release 114, configurable via
   `ref_species`/`ref_release`/`ref_build`) are fetched automatically at run
   time, and `gene_2_symbol` queries Ensembl biomaRt — **network access
   required** for both.
@@ -120,10 +120,10 @@ path). See the fidelity notes below for how these map to the upstream config.
 ## Source
 
 Upstream: **[snakemake-workflows/rna-seq-star-deseq2](https://github.com/snakemake-workflows/rna-seq-star-deseq2)**
-@ `v3.1.1` (sha
-`aa6b17edf3396230165c18709d04cd982bdaaa4c`), MIT license, Copyright (c) 2017
-Johannes Köster. Created 2026-08-15; this workflow may lag behind upstream
-releases. Upstream attribution and license details in
+@ `v3.1.2` (sha
+`b9617cfe8945b5747a0e93ef3b94833807c844c7`), MIT license, Copyright (c) 2017
+Johannes Köster. Created 2026-08-15; last synced with upstream at `v3.1.2` (2026-11-17); this
+workflow may lag behind newer upstream releases. Upstream attribution and license details in
 [NOTICE.md](NOTICE.md).
 
 ## Fidelity
@@ -158,7 +158,7 @@ notes per row); they appear as `skip` in the default dry-run plan.
 | rseqc_readgc | `rseqc_readgc` | RSeQC 5.0.4 | `read_GC.py -i <bam> -o <prefix>` verbatim |
 | multiqc | `multiqc` | MultiQC 1.29 | multiqc wrapper verbatim: parent dirs of all inputs (incl. the junction-annotation log dir), `--no-data-dir --outdir results/qc --filename multiqc_report`. (In upstream's `rule all` — ported, not excluded.) |
 | count_matrix | `count_matrix` | pandas 2.3.2 | count-matrix.py logic identical (strandedness column pick 1/2/3, sample naming, `groupby(...).sum()` collapse of technical replicates); unit→(sample, strandedness) mapping read from `config/units.tsv` instead of snakemake params |
-| gene_2_symbol | `gene_2_symbol_counts` / `gene_2_symbol_normcounts` / `gene_2_symbol_diffexp` | biomaRt 2.62.0, r-tidyverse 2.0.0 | upstream is one wildcard-generic rule over `{prefix}`; the port makes the three call sites explicit (oxo-flow has no arbitrary `{prefix}` wildcard). `{contrast}` variant scatters per contrast |
+| gene_2_symbol | `gene_2_symbol_counts` / `gene_2_symbol_normcounts` / `gene_2_symbol_diffexp` | biomaRt 2.62.0, r-tidyverse 2.0.0 | upstream is one wildcard-generic rule over `{prefix}`; the port makes the three call sites explicit (oxo-flow has no arbitrary `{prefix}` wildcard). `{contrast}` variant scatters per contrast. **Deviation (v3.1.2 sync):** upstream PR #105 replaced the manual mirror loop with biomaRt 2.68 auto mirror selection + `version=`; the port keeps the live-verified 2.62.0 pin + WAF fallback (issues #7/#10) — see the script header |
 | deseq2_init | `deseq2_init` | DESeq2 1.46.0 | deseq2-init.R logic identical (relevel base levels, batch-effect factors, default interaction model, `rowSums>1` filter, normalized counts); config values passed as CLI args |
 | pca | `pca_treatment_1` / `pca_treatment_2` / `pca_jointly_handled` | DESeq2 1.46.0 | plot-pca.R verbatim (`rlog(blind=FALSE)`, `plotPCA(intgroup=variable)`); one explicit rule per `pca_variables` entry (the engine's scatter does not substitute `{variable}` inside the script field), gated by `pca_activate` |
 | deseq2 | `deseq2` | DESeq2 1.46.0, r-ashr 2.2_63 | deseq2.R logic identical (list-form contrast = vof + level + base_level, ashr `lfcShrink`, `order(padj)`, MA plot); string-form contrasts ported via `contrast_exprs` (semicolon-joined R expressions parallel to `contrasts`, e.g. `list(c('a_vs_b', ...))`, evaluated `eval(parse(text = ...))` verbatim like upstream; entries must use single-quoted R strings and no semicolons); one instance per `contrasts` entry |
@@ -166,7 +166,7 @@ notes per row); they appear as `skip` in the default dry-run plan.
 | genome_faidx | `genome_faidx` | samtools 1.22 | `samtools faidx` wrapper verbatim → `resources/genome.fasta.fai`; gated on `genome_faidx_activate` (same reasoning as bwa_index) |
 | report/ (`report/*.rst`) | captions ported | `report = "…"` | The per-rule `.rst` captions (fastp, pca, diffexp, ma) are ported as static `report` annotations on the 6 report()-wrapped rules (`fastp_pe`, `fastp_se`, the 3 PCA rules, `deseq2`), rendered by the engine's rule-captions report section (oxo-flow >= 0.17.0; older engines ignore the key; upstream jinja wildcards cannot be interpolated, so the fastp caption notes the composite `{sample}` = `<sample>-<unit>` in words). The workflow-level `report:` directive (`workflow.rst`) and the sphinx-based `snakemake --report` HTML book (self-contained, figures embedded, categories/subcategories/labels) are not ported |
 | trimming.activate = False rewiring | `star_align_raw` / `star_align_se_raw` | STAR 2.7.11b | upstream then feeds raw reads to star_align; ported as explicit variants gated on `!trimming_activate` |
-| edger / kallisto / trimgalore | n/a | — | not present in upstream v3.1.1 (fastp is the trimmer, DESeq2 the DE tool) |
+| edger / kallisto / trimgalore | n/a | — | not present in upstream v3.1.2 (fastp is the trimmer, DESeq2 the DE tool) |
 
 **Port-level conventions** (config-shape deviations, commands unchanged):
 upstream wildcards are `(sample, unit)`; the port fans out over one composite

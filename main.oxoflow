@@ -1,8 +1,8 @@
-# oxo-flow port of snakemake-workflows/rna-seq-star-deseq2 v3.1.1
+# oxo-flow port of snakemake-workflows/rna-seq-star-deseq2 v3.1.2
 # (default-parameters main execution path).
 #
-# Upstream: https://github.com/snakemake-workflows/rna-seq-star-deseq2 @ v3.1.1
-#   (sha aa6b17edf3396230165c18709d04cd982bdaaa4c)
+# Upstream: https://github.com/snakemake-workflows/rna-seq-star-deseq2 @ v3.1.2
+#   (sha b9617cfe8945b5747a0e93ef3b94833807c844c7)
 # Default path (rule all): get_genome -> get_annotation -> star_index ->
 #   fastp_pe (trimming) -> star_align (STAR + --quantMode GeneCounts) ->
 #   RSeQC QC + multiqc -> count_matrix -> gene_2_symbol -> deseq2_init ->
@@ -47,6 +47,22 @@
 # defaults apply), and get_sra reads {meta.sra} per unit, downloading into
 # the raw_dir naming convention so trimming/alignment consume the reads
 # automatically (upstream get_units_fastqs).
+# Synced to upstream v3.1.2 on 2026-11-17 (compare v3.1.1...v3.1.2 — upstream
+# PR #105 "do not do manual mirror selection, but use biomaRt's better auto…"):
+# upstream's delta is (a) scripts/gene2symbol.R rewritten to drop the manual
+# mirror loop in favour of biomaRt's own auto mirror selection with a new
+# version= argument, envs/biomart.yaml re-pinned to bioconductor-biomart 2.68
+# (r-tidyverse/r-dbplyr dropped), and (b) the Ensembl ref release default
+# 115 -> 114 (config/config.yaml + .test/*). The port tracks (b): ref_release
+# and the three Ensembl download URLs now follow release-114. The port
+# deliberately keeps its own scripts/gene2symbol.R + envs/biomart.yaml
+# (biomaRt 2.62.0 + tidyverse 2.0.0 + dbplyr 2.5.0 mirror chain incl. the
+# browser-UA WAF fallback, issues #7/#10): that combination is what the
+# live-verified rating attests to, the fallback directly covers the Ensembl
+# edge-WAF 403/405 failures the upstream rewrite targets, and biomaRt
+# 2.62's useEnsembl has no version= parameter to feed the new lookup.
+# Upstream's remaining delta is key-order churn in the align/diffexp/qc/
+# ref/trim rules (no-ops).
 # Caption half ported: fastp_pe/fastp_se/pca_*/deseq2 carry `report = "…"`
 # annotations (upstream workflow/report/*.rst captions; engine 0.17.0+
 # rule-captions section; older engines ignore the key). Not ported (see
@@ -57,7 +73,7 @@
 [workflow]
 name = "oxo-flow-rnaseq-star-deseq2"
 version = "1.0.0"
-description = "RNA-seq differential expression with STAR and DESeq2: Ensembl reference download, fastp trimming, STAR alignment with gene counts, RSeQC QC + MultiQC, count matrix, gene symbol annotation, DESeq2 (PCA + contrasts) — oxo-flow port of snakemake-workflows/rna-seq-star-deseq2 v3.1.1"
+description = "RNA-seq differential expression with STAR and DESeq2: Ensembl reference download, fastp trimming, STAR alignment with gene counts, RSeQC QC + MultiQC, count matrix, gene symbol annotation, DESeq2 (PCA + contrasts) — oxo-flow port of snakemake-workflows/rna-seq-star-deseq2 v3.1.2"
 author = "oxo-flow-community"
 # Per-unit lookup table (upstream units.tsv): config/units.tsv doubles as
 # the engine's metadata samplesheet — first column = unit_key (<sample>-<unit>,
@@ -86,7 +102,7 @@ raw_dir = "test/fixtures/raw"
 # Reference (upstream: ref.species / ref.release / ref.build). The download
 # URLs below are the Ensembl URLs the wrappers resolve for these values.
 ref_species = "homo_sapiens"
-ref_release = "115"
+ref_release = "114"
 ref_build = "GRCh38"
 # Local reference overrides: set to a local FASTA/GTF to skip the Ensembl
 # download entirely (offline machines, tiny test runs). Empty = download
@@ -94,9 +110,9 @@ ref_build = "GRCh38"
 # test/fixtures/reference/ with matching reads in raw-synthetic/.
 genome_fasta = ""
 annotation_gtf = ""
-genome_url = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
-genome_url_toplevel = "https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.toplevel.fa.gz"
-annotation_url = "ftp://ftp.ensembl.org/pub/release-115/gtf/homo_sapiens/Homo_sapiens.GRCh38.115.gtf.gz"
+genome_url = "https://ftp.ensembl.org/pub/release-114/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
+genome_url_toplevel = "https://ftp.ensembl.org/pub/release-114/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.toplevel.fa.gz"
+annotation_url = "ftp://ftp.ensembl.org/pub/release-114/gtf/homo_sapiens/Homo_sapiens.GRCh38.114.gtf.gz"
 # Trimming (upstream: trimming.activate). With trimming off, the port's
 # star_align_raw / star_align_se_raw variants feed the raw reads to STAR,
 # mirroring the upstream rewiring (get_fq with trimming.activate = False).

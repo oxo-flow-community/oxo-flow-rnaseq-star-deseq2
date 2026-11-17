@@ -26,6 +26,16 @@
 #    after the normal path has failed on all mirrors; when Ensembl is
 #    reachable the original behaviour is preserved exactly.
 #
+# v3.1.2 sync note (2026-11-17): upstream replaced the manual mirror loop
+# with biomaRt's own auto mirror selection (upstream PR #105), re-pinned
+# bioconductor-biomart to 2.68, passed version= from ref/release and dropped
+# r-tidyverse/r-dbplyr from the env. This script deliberately keeps the
+# live-verified pinned combination (biomaRt 2.62.0 + tidyverse 2.0.0 +
+# dbplyr 2.5.0) and the WAF fallback below — 2.62's useEnsembl has no
+# version= parameter, and the fallback covers the Ensembl edge-WAF 403/405
+# failures that motivated the upstream rewrite. See the main.oxoflow header
+# for the full sync record.
+#
 # Usage: gene2symbol.R <input.tsv> <output.tsv> <species> <log>
 #   species: biomaRt dataset suffix, e.g. "hsapiens" (upstream
 #            get_bioc_species_name(): homo_sapiens -> hsapiens)

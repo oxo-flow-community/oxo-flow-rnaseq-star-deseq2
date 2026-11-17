@@ -7,8 +7,8 @@
   "source": {
     "repo": "snakemake-workflows/rna-seq-star-deseq2",
     "url": "https://github.com/snakemake-workflows/rna-seq-star-deseq2",
-    "tag": "v3.1.1",
-    "sha": "aa6b17edf3396230165c18709d04cd982bdaaa4c",
+    "tag": "v3.1.2",
+    "sha": "b9617cfe8945b5747a0e93ef3b94833807c844c7",
     "license": "MIT"
   },
   "created": "2026-08-15",
@@ -81,7 +81,7 @@
     "toolchain": "conda envs — pinned",
     "requirements": [
       "paired-end FASTQ reads per config/units.tsv (raw/<unit-key>_R1.fastq.gz / _R2.fastq.gz) and sample conditions in config/samples.tsv",
-      "reference genome + annotation downloaded automatically from Ensembl release 115 (GRCh38) — network access required (also for biomaRt gene-symbol annotation)",
+      "reference genome + annotation downloaded automatically from Ensembl release 114 (GRCh38) — network access required (also for biomaRt gene-symbol annotation)",
       "compute: up to 24 CPUs per rule (star_align); 8 (fastp_pe); 4 (fastp_se, star_index); no per-rule memory limits configured in the workflow",
       "disk: several tens of GB — ~30 GB GRCh38 STAR index, plus BAMs and trimmed reads"
     ]
